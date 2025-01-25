@@ -301,6 +301,7 @@ else version (OpenBSD)
     enum RTLD_LOCAL     = 0;
     enum RTLD_TRACE     = 0x200;
     enum RTLD_NODELETE  = 0x400;
+    enum RTLD_NOLOAD    = 0x800;
 
     int   dlclose(void*);
     char* dlerror();

@@ -249,5 +249,3 @@ enum
     HW_MAXID          = 26,
 }
 
-///
-int sysctl(const int*, uint, void*, size_t*, void*, size_t);

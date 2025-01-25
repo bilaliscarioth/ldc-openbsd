@@ -107,7 +107,12 @@ cl::opt<CFProtectionType> fCFProtection(
                clEnumValN(CFProtectionType::Full, "",
                           "") // default to "full" if no argument specified
                ),
+#ifndef __OpenBSD__
     cl::init(CFProtectionType::None));
+#else
+    cl::init(CFProtectionType::None));
+#endif
+
 
 void initializeInstrumentationOptionsFromCmdline(const llvm::Triple &triple) {
   if (ASTPGOInstrGenFile.getNumOccurrences() > 0) {

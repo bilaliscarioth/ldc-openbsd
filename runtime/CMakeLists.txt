@@ -103,7 +103,7 @@ else()
 endif()
 
 set(SHARED_LIBS_SUPPORTED OFF)
-if("${TARGET_SYSTEM}" MATCHES "Windows|Linux|FreeBSD|DragonFly|APPLE")
+if("${TARGET_SYSTEM}" MATCHES "Windows|Linux|FreeBSD|DragonFly|APPLE|OpenBSD")
     set(SHARED_LIBS_SUPPORTED ON)
 endif()
 

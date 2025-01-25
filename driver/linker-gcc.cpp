@@ -140,8 +140,8 @@ std::string getLTOGoldPluginPath() {
 }
 
 void ArgsBuilder::addLTOGoldPluginFlags(bool requirePlugin) {
-  if (requirePlugin)
-    addLdFlag("-plugin", getLTOGoldPluginPath());
+//  if (requirePlugin)
+//    addLdFlag("-plugin", getLTOGoldPluginPath());
 
   if (opts::isUsingThinLTO())
     addLdFlag("-plugin-opt=thinlto");
@@ -454,7 +454,6 @@ void ArgsBuilder::addCppStdlibLinkFlags(const llvm::Triple &triple) {
     break;
   case llvm::Triple::Solaris:
   case llvm::Triple::NetBSD:
-  case llvm::Triple::OpenBSD:
   case llvm::Triple::DragonFly:
     args.push_back("-lstdc++");
     break;
@@ -464,6 +463,7 @@ void ArgsBuilder::addCppStdlibLinkFlags(const llvm::Triple &triple) {
   case llvm::Triple::WatchOS:
   case llvm::Triple::TvOS:
   case llvm::Triple::FreeBSD:
+  case llvm::Triple::OpenBSD:
     args.push_back("-lc++");
     break;
   default:
@@ -720,17 +720,18 @@ void ArgsBuilder::addDefaultPlatformLibs() {
     args.push_back("-lrt");
     args.push_back("-ldl");
   // fallthrough
+  case llvm::Triple::OpenBSD:
+    args.push_back("-lexecinfo");
+    args.push_back("-lc++abi");
   case llvm::Triple::Darwin:
   case llvm::Triple::MacOSX:
   case llvm::Triple::FreeBSD:
   case llvm::Triple::NetBSD:
-  case llvm::Triple::OpenBSD:
   case llvm::Triple::DragonFly:
     addSoname = true;
     args.push_back("-lpthread");
     args.push_back("-lm");
     break;
-
   case llvm::Triple::Solaris:
     args.push_back("-lm");
     args.push_back("-lumem");

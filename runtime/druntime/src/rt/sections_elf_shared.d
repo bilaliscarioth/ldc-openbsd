@@ -23,6 +23,7 @@ version (CRuntime_Glibc) enum SharedELF = true;
 else version (CRuntime_Musl) enum SharedELF = true;
 else version (FreeBSD) enum SharedELF = true;
 else version (NetBSD) enum SharedELF = true;
+else version (OpenBSD) enum SharedELF = true;
 else version (DragonFlyBSD) enum SharedELF = true;
 else version (CRuntime_Bionic) enum SharedELF = true;
 else version (CRuntime_UClibc) enum SharedELF = true;
@@ -78,6 +79,12 @@ else version (NetBSD)
     import core.sys.netbsd.dlfcn;
     import core.sys.netbsd.sys.elf;
     import core.sys.netbsd.sys.link_elf;
+}
+else version (OpenBSD)
+{
+    import core.sys.openbsd.dlfcn;
+    import core.sys.openbsd.sys.elf;
+    import core.sys.openbsd.sys.link_elf;
 }
 else version (DragonFlyBSD)
 {
@@ -214,6 +221,7 @@ private:
 version (FreeBSD) private __gshared void* dummy_ref;
 version (DragonFlyBSD) private __gshared void* dummy_ref;
 version (NetBSD) private __gshared void* dummy_ref;
+version (OpenBSD) private __gshared void* dummy_ref;
 
 /****
  * Gets called on program startup just before GC is initialized.
@@ -224,6 +232,7 @@ void initSections() nothrow @nogc
     version (FreeBSD) dummy_ref = &_d_dso_registry;
     version (DragonFlyBSD) dummy_ref = &_d_dso_registry;
     version (NetBSD) dummy_ref = &_d_dso_registry;
+    version (OpenBSD) dummy_ref = &_d_dso_registry;
 }
 
 
@@ -397,6 +406,7 @@ private:
 version (FreeBSD) deprecated extern (C) __gshared void* _Dmodule_ref;
 version (DragonFlyBSD) deprecated extern (C) __gshared void* _Dmodule_ref;
 version (NetBSD) deprecated extern (C) __gshared void* _Dmodule_ref;
+version (OpenBSD) deprecated extern (C) __gshared void* _Dmodule_ref;
 
 version (Shared)
 {
@@ -932,6 +942,8 @@ version (Shared)
                 else version (FreeBSD)
                     enum relocate = true;
                 else version (NetBSD)
+		    enum relocate = true;
+		else version(OpenBSD)
                     enum relocate = true;
                 else version (DragonFlyBSD)
                     enum relocate = true;
@@ -1183,7 +1195,10 @@ version (LDC)
         alias __tls_get_addr = ___tls_get_addr;
     }
     else
-        extern(C) void* __tls_get_addr(tls_index* ti) nothrow @nogc;
+	version (OpenBSD) 
+            extern(C) void* __emutls_get_address(tls_index* ti) nothrow @nogc;
+	else
+            extern(C) void* __tls_get_addr(tls_index* ti) nothrow @nogc;
 }
 else
 extern(C) void* __tls_get_addr(tls_index* ti) nothrow @nogc;
@@ -1275,6 +1290,10 @@ void[] getTLSRange(size_t mod, size_t sz, size_t alignment) nothrow @nogc
 
         // base offset
         auto ti = tls_index(mod, 0);
+	version(OpenBSD) {
+		return (__emutls_get_address(&ti)-TLS_DTV_OFFSET)[0 .. sz];
+	}
+	else 
         return (__tls_get_addr(&ti)-TLS_DTV_OFFSET)[0 .. sz];
     }
 }
