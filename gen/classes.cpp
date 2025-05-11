@@ -72,7 +72,7 @@ void DtoResolveClass(ClassDeclaration *cd) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-DValue *DtoNewClass(const Loc &loc, TypeClass *tc, NewExp *newexp) {
+DValue *DtoNewClass(Loc loc, TypeClass *tc, NewExp *newexp) {
   // resolve type
   DtoResolveClass(tc->sym);
   const auto irClass = getIrAggr(tc->sym);
@@ -80,17 +80,20 @@ DValue *DtoNewClass(const Loc &loc, TypeClass *tc, NewExp *newexp) {
   // allocate
   LLValue *mem;
   bool doInit = true;
-  if (newexp->onstack) {
+  if (newexp->placement) {
+    mem = DtoLVal(newexp->placement);
+  } else if (newexp->onstack) {
     mem = DtoRawAlloca(irClass->getLLStructType(), tc->sym->alignsize,
                        ".newclass_alloca");
+  } else if (global.params.ehnogc && newexp->thrownew) {
+    // _d_newThrowable template lowering
+    assert(newexp->lowering);
+    mem = DtoRVal(newexp->lowering);
+    doInit = false;
   } else {
-    const bool useEHAlloc = global.params.ehnogc && newexp->thrownew;
-    llvm::Function *fn = getRuntimeFunction(
-        loc, gIR->module, useEHAlloc ? "_d_newThrowable" : "_d_allocclass");
+    llvm::Function *fn = getRuntimeFunction(loc, gIR->module, "_d_allocclass");
     LLConstant *ci = irClass->getClassInfoSymbol();
-    mem = gIR->CreateCallOrInvoke(
-        fn, ci, useEHAlloc ? ".newthrowable" : ".newclass_gc");
-    doInit = !useEHAlloc;
+    mem = gIR->CreateCallOrInvoke(fn, ci, ".newclass_gc");
   }
 
   // init
@@ -173,7 +176,7 @@ void DtoInitClass(TypeClass *tc, LLValue *dst) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void DtoFinalizeClass(const Loc &loc, LLValue *inst) {
+void DtoFinalizeClass(Loc loc, LLValue *inst) {
   // get runtime function
   llvm::Function *fn =
       getRuntimeFunction(loc, gIR->module, "_d_callfinalizer");
@@ -183,7 +186,7 @@ void DtoFinalizeClass(const Loc &loc, LLValue *inst) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void DtoFinalizeScopeClass(const Loc &loc, DValue *dval,
+void DtoFinalizeScopeClass(Loc loc, DValue *dval,
                            bool dynTypeMatchesStaticType) {
   llvm::Value *inst = DtoRVal(dval);
 
@@ -229,7 +232,7 @@ void DtoFinalizeScopeClass(const Loc &loc, DValue *dval,
 
 ////////////////////////////////////////////////////////////////////////////////
 
-DValue *DtoCastClass(const Loc &loc, DValue *val, Type *_to) {
+DValue *DtoCastClass(Loc loc, DValue *val, Type *_to) {
   IF_LOG Logger::println("DtoCastClass(%s, %s)", val->type->toChars(),
                          _to->toChars());
   LOG_SCOPE;
@@ -249,7 +252,7 @@ DValue *DtoCastClass(const Loc &loc, DValue *val, Type *_to) {
     return new DImValue(_to, gIR->ir->CreateICmpNE(llval, zero));
   }
   // class -> integer
-  if (to->isintegral()) {
+  if (to->isIntegral()) {
     IF_LOG Logger::println("to %s", to->toChars());
 
     // get class ptr
@@ -347,7 +350,7 @@ static void resolveObjectAndClassInfoClasses() {
   DtoResolveClass(Type::typeinfoclass);
 }
 
-DValue *DtoDynamicCastObject(const Loc &loc, DValue *val, Type *_to) {
+DValue *DtoDynamicCastObject(Loc loc, DValue *val, Type *_to) {
 
   resolveObjectAndClassInfoClasses();
 
@@ -400,7 +403,7 @@ DValue *DtoDynamicCastObject(const Loc &loc, DValue *val, Type *_to) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-DValue *DtoDynamicCastInterface(const Loc &loc, DValue *val, Type *_to) {
+DValue *DtoDynamicCastInterface(Loc loc, DValue *val, Type *_to) {
 
   resolveObjectAndClassInfoClasses();
 

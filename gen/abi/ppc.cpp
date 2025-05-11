@@ -36,6 +36,10 @@ struct PPCTargetABI : TargetABI {
 
   explicit PPCTargetABI(const bool Is64Bit) : Is64Bit(Is64Bit) {}
 
+  llvm::UWTableKind defaultUnwindTableKind() override {
+    return llvm::UWTableKind::Async;
+  }
+
   bool returnInArg(TypeFunction *tf, bool) override {
     Type *rt = tf->next->toBasetype();
 
@@ -70,8 +74,8 @@ struct PPCTargetABI : TargetABI {
           compositeToArray32.applyTo(arg);
         }
       }
-    } else if (ty->isintegral()) {
-      arg.attrs.addAttribute(ty->isunsigned() ? LLAttribute::ZExt
+    } else if (ty->isIntegral()) {
+      arg.attrs.addAttribute(ty->isUnsigned() ? LLAttribute::ZExt
                                               : LLAttribute::SExt);
     }
   }

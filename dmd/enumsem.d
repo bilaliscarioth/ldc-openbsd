@@ -1,12 +1,12 @@
 /**
  * Does the semantic passes on enums.
  *
- * Copyright:   Copyright (C) 1999-2024 by The D Language Foundation, All Rights Reserved
+ * Copyright:   Copyright (C) 1999-2025 by The D Language Foundation, All Rights Reserved
  * Authors:     $(LINK2 https://www.digitalmars.com, Walter Bright)
  * License:     $(LINK2 https://www.boost.org/LICENSE_1_0.txt, Boost License 1.0)
- * Source:      $(LINK2 https://github.com/dlang/dmd/blob/master/src/dmd/enumsem.d, _enumsem.d)
+ * Source:      $(LINK2 https://github.com/dlang/dmd/blob/master/compiler/src/dmd/enumsem.d, _enumsem.d)
  * Documentation:  https://dlang.org/phobos/dmd_enumsem.html
- * Coverage:    https://codecov.io/gh/dlang/dmd/src/master/src/dmd/enumsem.d
+ * Coverage:    https://codecov.io/gh/dlang/dmd/src/master/compiler/src/dmd/enumsem.d
  */
 
 module dmd.enumsem;
@@ -30,7 +30,6 @@ import dmd.declaration;
 import dmd.denum;
 import dmd.dimport;
 import dmd.dinterpret;
-import dmd.dmangle;
 import dmd.dmodule;
 import dmd.dscope;
 import dmd.dstruct;
@@ -119,7 +118,7 @@ void enumSemantic(Scope* sc, EnumDeclaration ed)
     ed.cppnamespace = sc.namespace;
 
     ed.semanticRun = PASS.semantic;
-    UserAttributeDeclaration.checkGNUABITag(ed, sc.linkage);
+    checkGNUABITag(ed, sc.linkage);
     checkMustUseReserved(ed);
 
     if (!ed.members && !ed.memtype) // enum ident;
@@ -159,9 +158,10 @@ void enumSemantic(Scope* sc, EnumDeclaration ed)
                 ed.semanticRun = PASS.initial;
                 return;
             }
-            else
-                // Ensure that semantic is run to detect. e.g. invalid forward references
-                sym.dsymbolSemantic(sc);
+            // Ensure that semantic is run to detect. e.g. invalid forward references
+            sym.dsymbolSemantic(sc);
+            if (ed.errors)
+                ed.memtype = Type.terror; // avoid infinite recursion in toBaseType
         }
         if (ed.memtype.ty == Tvoid)
         {
@@ -176,6 +176,8 @@ void enumSemantic(Scope* sc, EnumDeclaration ed)
             ed.semanticRun = PASS.semanticdone;
             return;
         }
+        if (global.params.useTypeInfo && Type.dtypeinfo && !ed.inNonRoot())
+            semanticTypeInfo(sc, ed.memtype);
     }
 
     if (!ed.members) // enum ident : memtype;
@@ -192,7 +194,7 @@ void enumSemantic(Scope* sc, EnumDeclaration ed)
         return;
     }
 
-    if (!(sc.flags & SCOPE.Cfile))  // C enum remains incomplete until members are done
+    if (!sc.inCfile)  // C enum remains incomplete until members are done
         ed.semanticRun = PASS.semanticdone;
 
     version (none)
@@ -219,8 +221,7 @@ void enumSemantic(Scope* sc, EnumDeclaration ed)
      */
     ed.members.foreachDsymbol( (s)
     {
-        EnumMember em = s.isEnumMember();
-        if (em)
+        if (EnumMember em = s.isEnumMember())
             em._scope = sce;
     });
 
@@ -230,7 +231,7 @@ void enumSemantic(Scope* sc, EnumDeclaration ed)
      */
     addEnumMembersToSymtab(ed, sc, sc.getScopesym());
 
-    if (sc.flags & SCOPE.Cfile)
+    if (sc.inCfile)
     {
         /* C11 6.7.2.2
          */
@@ -343,13 +344,16 @@ void enumSemantic(Scope* sc, EnumDeclaration ed)
         if (EnumMember em = s.isEnumMember())
             em.dsymbolSemantic(em._scope);
     });
+
+    if (global.params.useTypeInfo && Type.dtypeinfo && !ed.inNonRoot())
+        semanticTypeInfo(sc, ed.memtype);
     //printf("ed.defaultval = %lld\n", ed.defaultval);
 
     //if (ed.defaultval) printf("ed.defaultval: %s %s\n", ed.defaultval.toChars(), ed.defaultval.type.toChars());
     //printf("members = %s\n", members.toChars());
 }
 
-Expression getDefaultValue(EnumDeclaration ed, const ref Loc loc)
+Expression getDefaultValue(EnumDeclaration ed, Loc loc)
 {
     Expression handleErrors(){
         ed.defaultval = ErrorExp.get();
@@ -386,8 +390,7 @@ Expression getDefaultValue(EnumDeclaration ed, const ref Loc loc)
 
     foreach (const i; 0 .. ed.members.length)
     {
-        EnumMember em = (*ed.members)[i].isEnumMember();
-        if (em)
+        if (EnumMember em = (*ed.members)[i].isEnumMember())
         {
             if (em.semanticRun < PASS.semanticdone)
             {
@@ -402,7 +405,7 @@ Expression getDefaultValue(EnumDeclaration ed, const ref Loc loc)
     return handleErrors();
 }
 
-Type getMemtype(EnumDeclaration ed, const ref Loc loc)
+Type getMemtype(EnumDeclaration ed, Loc loc)
 {
     if (ed._scope)
     {
@@ -701,7 +704,7 @@ void enumMemberSemantic(Scope* sc, EnumMember em)
 
         if (e.op == EXP.error)
             return errorReturn();
-        if (e.type.isfloating())
+        if (e.type.isFloating())
         {
             // Check that e != eprev (not always true for floats)
             Expression etest = new EqualExp(EXP.equal, em.loc, e, eprev);

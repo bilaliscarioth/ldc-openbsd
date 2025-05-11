@@ -22,25 +22,20 @@ runs:
             sysroot='/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk'
         fi
 
-        # use bootstrap-ldc, which is guaranteed to be native
-        bootstrap-ldc/bin/ldc-build-runtime --ninja \
-          --buildDir=build-libs-ios \
+        installed/bin/ldc-build-runtime --ninja \
           --dFlags="-mtriple=$triple" \
           --ldcSrcDir="$PWD/ldc" \
+          --installWithSuffix="-ios-$arch" \
           CMAKE_SYSTEM_NAME=iOS \
           CMAKE_OSX_SYSROOT="$sysroot" \
           CMAKE_OSX_ARCHITECTURES="$arch" \
           CMAKE_OSX_DEPLOYMENT_TARGET="$deployment_target" \
           BUILD_LTO_LIBS=ON
 
-        mkdir "installed/lib-ios-$arch"
-        cp -a build-libs-ios/lib/*.{a,dylib,o} "installed/lib-ios-$arch/"
-
         section="
         \"$arch-apple-ios\":
         {
-            switches = [
-                \"-defaultlib=phobos2-ldc,druntime-ldc\",
+            switches ~= [
                 \"-Xcc=-isysroot\",
                 \"-Xcc=$sysroot\",
             ];

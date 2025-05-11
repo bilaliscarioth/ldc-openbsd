@@ -2,6 +2,17 @@
  * Many platforms do not support all the C Standard headers.
  */
 
+/* LDC defaults to clang-cl (if available) as preprocessor on Windows, which for
+ * this test causes importC trouble starting with the MSVC v17.13 headers, wrt.
+ * `__declspec(_Noreturn)`, `_Float16`, `__bf16`, `unsigned __int128` etc.
+ *
+ * => use Microsoft's cl.exe as preprocessor
+ * REQUIRED_ARGS(windows): -gcc=cl
+ *
+ * => ignore cl.exe printing the preprocessed filename (auto-suppressed by DMD)
+ * TRANSFORM_OUTPUT(windows): remove_lines("^stdcheaders\.c$")
+ */
+
 #include <assert.h>
 
 #include <complex.h>
@@ -21,11 +32,9 @@
 #include <limits.h>
 #include <locale.h>
 
-#ifndef __APPLE__ // /Applications/Xcode-14.2.0.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include/tgmath.h(39): Error: named parameter required before `...`
 #include <math.h>
 #ifndef _MSC_VER // C:\Program Files (x86)\Windows Kits\10\include\10.0.26100.0\ucrt\corecrt_math.h(93): Error: reinterpretation through overlapped field `f` is not allowed in CTFE
 float x = NAN;
-#endif
 #endif
 
 #ifndef _MSC_VER // setjmp.h(51): Error: missing tag `identifier` after `struct

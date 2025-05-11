@@ -32,8 +32,13 @@ private:
   IndirectByvalRewrite indirectByvalRewrite;
   ArgTypesRewrite argTypesRewrite;
 
+  bool hasAAPCS64VaList() {
+    return !isDarwin() &&
+           !global.params.targetTriple->isWindowsMSVCEnvironment();
+  }
+
   bool isAAPCS64VaList(Type *t) {
-    if (isDarwin())
+    if (!hasAAPCS64VaList())
       return false;
 
     // look for a __va_list struct in a `std` C++ namespace
@@ -51,6 +56,10 @@ private:
 
 public:
   AArch64TargetABI() {}
+
+  llvm::UWTableKind defaultUnwindTableKind() override {
+    return isDarwin() ? llvm::UWTableKind::Sync : llvm::UWTableKind::Async;
+  }
 
   bool returnInArg(TypeFunction *tf, bool) override {
     Type *rt = tf->next->toBasetype();
@@ -152,7 +161,7 @@ public:
   }
 
   Type *vaListType() override {
-    if (isDarwin())
+    if (!hasAAPCS64VaList())
       return TargetABI::vaListType(); // char*
 
     // We need to pass the actual va_list type for correct mangling. Simply

@@ -1,8 +1,8 @@
 #include "driver/cpreprocessor.h"
 
 #include "dmd/errors.h"
+#include "dmd/timetrace.h"
 #include "driver/cl_options.h"
-#include "driver/timetrace.h"
 #include "driver/tool.h"
 #include "gen/irstate.h"
 #include "llvm/Support/FileSystem.h"
@@ -12,15 +12,20 @@
 #include "llvm/Target/TargetMachine.h"
 
 namespace {
-const char *getPathToImportc_h(const Loc &loc) {
+const char *getPathToImportc_h(Loc loc) {
   // importc.h should be next to object.d
   static const char *cached = nullptr;
   if (!cached) {
-    cached = FileName::searchPath(global.path, "importc.h", false);
+    cached = FileName::searchPath(global.importPaths, "importc.h", false);
     if (!cached) {
       error(loc, "cannot find \"importc.h\" along import path");
       fatal();
     }
+
+#ifdef _WIN32
+    // if the path to importc.h is relative, cl.exe (but not clang-cl) treats it as relative to the .c file!
+    cached = FileName::toAbsolute(cached);
+#endif
   }
   return cached;
 }
@@ -52,7 +57,7 @@ const std::string &getCC(bool isMSVC,
   return cached_cc;
 }
 
-FileName getOutputPath(const Loc &loc, const char *csrcfile) {
+FileName getOutputPath(Loc loc, const char *csrcfile) {
   llvm::SmallString<64> buffer;
 
   // 1) create a new temporary directory (e.g., `/tmp/itmp-ldc-10ecec`)
@@ -74,9 +79,8 @@ FileName getOutputPath(const Loc &loc, const char *csrcfile) {
 }
 } // anonymous namespace
 
-FileName runCPreprocessor(FileName csrcfile, const Loc &loc,
-                          OutBuffer &defines) {
-  TimeTraceScope timeScope("Preprocess C file", csrcfile.toChars());
+FileName runCPreprocessor(FileName csrcfile, Loc loc, OutBuffer &defines) {
+  dmd::TimeTraceScope timeScope("Preprocess C file", csrcfile.toChars(), loc);
 
   const char *importc_h = getPathToImportc_h(loc);
 

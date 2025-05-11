@@ -21,17 +21,21 @@ runs:
         cd ldc2-multilib
         mv lib lib64
         cp -R ../ldc2-x86/lib lib32
-        cp ../ldc2-x86/bin/*.{dll,pdb} lib32/
+        cp ../ldc2-x86/bin/{*.dll,*.pdb,curl-ca-bundle.crt} lib32/
     - name: Merge ldc2.conf
       shell: pwsh
       run: |
         cd ldc2-multilib
         (cat etc\ldc2.conf).replace('%%ldcbinarypath%%/../lib', '%%ldcbinarypath%%/../lib64') | Set-Content etc\ldc2.conf
-        $conf32 = cat ..\ldc2-x86\etc\ldc2.conf -Raw
-        $conf32 = "`r`n""i[3-6]86-.*-windows-msvc"":" + $conf32.Substring($conf32.IndexOf("`r`ndefault:") + 10)
-        $conf32 = $conf32.Substring(0, $conf32.IndexOf("`r`n};`r`n") + 6)
-        $conf32 = $conf32.Replace('%%ldcbinarypath%%/../lib', '%%ldcbinarypath%%/../lib32')
-        Add-Content etc\ldc2.conf $conf32
+        $conf32 = '
+        "i[3-6]86-.*-windows-msvc":
+        {
+            lib-dirs = [
+                "%%ldcbinarypath%%/../lib32",
+            ];
+        };
+        '
+        Add-Content etc\ldc2.conf $conf32 -NoNewline
         cat etc\ldc2.conf
 
     - name: Generate hello.d
@@ -63,6 +67,57 @@ runs:
         set PATH=%CD%\ldc2-multilib\lib32;%PATH%
         ldc2-multilib\bin\ldc2 -link-defaultlib-shared -m32 -run hello.d || exit /b
 
+    # preliminary arm64 cross-compilation support
+    - name: Install ninja v1.12.1
+      uses: Ahajha/gha-setup-ninja@69595b0cf872acdad8ce599142fbdc88724b9a2b
+    - name: Set VSDIR env variable
+      shell: bash
+      run: echo "VSDIR=$(vswhere -latest -property installationPath)" >> $GITHUB_ENV
+    - name: Cross-compile arm64 libraries
+      shell: cmd
+      run: |
+        echo on
+        call "%VSDIR%\Common7\Tools\VsDevCmd.bat" -arch=arm64 -host_arch=x64 || exit /b
+        echo on
+        ldc2-multilib\bin\ldc-build-runtime --ninja ^
+          --dFlags=-mtriple=aarch64-windows-msvc ^
+          "--ldcSrcDir=%CD%" ^
+          --installWithSuffix=arm64 ^
+          BUILD_LTO_LIBS=ON
+    - name: Add arm64 section to ldc2.conf
+      shell: pwsh
+      run: |
+        cd ldc2-multilib
+        $conf = '
+        "(aarch|arm)64-.*-windows-msvc":
+        {
+            lib-dirs = [
+                "%%ldcbinarypath%%/../libarm64",
+            ];
+        };
+        '
+        Add-Content etc\ldc2.conf $conf -NoNewline
+        cat etc\ldc2.conf
+    - name: Run arm64 hello-world cross-compilation smoke tests
+      shell: cmd
+      run: |
+        echo on
+        call "%VSDIR%\Common7\Tools\VsDevCmd.bat" -arch=arm64 -host_arch=x64 || exit /b
+        echo on
+        ldc2-multilib\bin\ldc2 -mtriple=aarch64-windows-msvc hello.d || exit /b
+        ldc2-multilib\bin\ldc2 -mtriple=aarch64-windows-msvc -link-defaultlib-shared hello.d || exit /b
+    - name: Add arm64 libcurl
+      shell: bash
+      run: |
+        set -eux
+        url='https://curl.se/windows/latest.cgi?p=win64a-mingw.zip'
+        curl -fL --retry 3 --max-time 60 -o libcurl.zip "$url"
+        7z x libcurl.zip >/dev/null
+        rm libcurl.zip
+        cp curl-*/bin/{libcurl*.dll,curl-ca-bundle.crt} ldc2-multilib/libarm64/
+        rm -rf curl-*
+        mv ldc2-multilib/libarm64/libcurl*.dll ldc2-multilib/libarm64/libcurl.dll
+
     - name: Pack multilib package
       shell: bash
       run: |
@@ -79,7 +134,8 @@ runs:
 
         artifactName="ldc2-$artifactID-windows-multilib"
         cp -R ldc2-multilib $artifactName # copy, not move - sporadic 'permission denied' errors…
-        7z a -mx=9 newArtifacts/$artifactName.7z $artifactName >/dev/null
+        # `-mf=BCJ2` to disable the ARM64 filter (introduced in 7-Zip v23.00; cannot be decompressed with older versions)
+        7z a -mx=9 -mf=BCJ2 newArtifacts/$artifactName.7z $artifactName >/dev/null
 
         # export ARTIFACT_{ID,NAME}
         echo "ARTIFACT_ID=$artifactID" >> $GITHUB_ENV
@@ -89,6 +145,7 @@ runs:
       shell: cmd
       run: |
         echo on
+        choco install innosetup
         "C:\Program Files (x86)\Inno Setup 6\iscc" ^
           "/O%CD%\newArtifacts" ^
           "/DLDCVersion=%ARTIFACT_ID%" ^

@@ -1,6 +1,5 @@
 import core.runtime;
-import core.stdc.stdio;
-import core.stdc.string;
+import core.stdc.string : strrchr;
 import core.thread;
 
 version (DragonFlyBSD) import core.sys.dragonflybsd.dlfcn : RTLD_NOLOAD;
@@ -127,27 +126,16 @@ void runTests(string libName)
     assert(findModuleInfo("lib") is null);
 }
 
-version (LDC)
-{
-    version (CRuntime_Musl) enum unloadIsNoop = true;
-    else version (darwin)   enum unloadIsNoop = true;
-    else                    enum unloadIsNoop = false;
-}
-
 void main(string[] args)
 {
     auto name = args[0] ~ '\0';
     const pathlen = strrchr(name.ptr, '/') - name.ptr + 1;
-    import utils : dllExt;
+    import utils : dllExt, isDlcloseNoop;
     name = name[0 .. pathlen] ~ "lib." ~ dllExt;
 
     runTests(name);
 
-    static if (unloadIsNoop)
-    {
-        // https://github.com/ldc-developers/ldc/issues/3002
-    }
-    else
+    static if (!isDlcloseNoop)
     {
         // lib is no longer resident
         name ~= '\0';
@@ -158,7 +146,7 @@ void main(string[] args)
         }
         else
         {
-            import core.sys.posix.dlfcn;
+            import core.sys.posix.dlfcn : dlopen, RTLD_LAZY;
             assert(dlopen(name.ptr, RTLD_LAZY | RTLD_NOLOAD) is null);
         }
         name = name[0 .. $-1];

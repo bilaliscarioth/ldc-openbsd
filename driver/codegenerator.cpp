@@ -132,7 +132,7 @@ bool inlineAsmDiagnostic(IRState *irs, const llvm::SMDiagnostic &d,
 
   // replace the `<inline asm>` dummy filename by the LOC of the actual D
   // expression/statement (`myfile.d(123)`)
-  const Loc &loc = irs->getInlineAsmSrcLoc(locCookie);
+  const Loc loc = irs->getInlineAsmSrcLoc(locCookie);
   const char *filename = loc.toChars(/*showColumns*/ false);
 
   // keep on using llvm::SMDiagnostic::print() for nice, colorful output
@@ -152,7 +152,7 @@ struct InlineAsmDiagnosticHandler : public llvm::DiagnosticHandler {
     if (DI.getKind() == llvm::SourceMgr::DK_Error ||
         DI.getSeverity() == llvm::DS_Error) {
       ++global.errors;
-    } else if (global.params.warnings == DIAGNOSTICerror &&
+    } else if (global.params.useWarnings == DIAGNOSTICerror &&
                (DI.getKind() == llvm::SourceMgr::DK_Warning ||
                 DI.getSeverity() == llvm::DS_Warning)) {
       ++global.warnings;

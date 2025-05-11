@@ -2,8 +2,12 @@
 
 name: Vanilla LLVM
 on:
-  - pull_request
-  - push
+  pull_request:
+  push:
+    branches-ignore:
+      - 'merge-*' # don't run on pushes to merge-X.Y.Z branches, they are usually PRs
+    tags: # explicitly needed to run for all tags, due to the branches filter above
+      - '**'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -24,17 +28,17 @@ jobs:
             os: macos-14
             host_dc: ldc-beta
             llvm_version: 17.0.5
-            cmake_flags: -DBUILD_SHARED_LIBS=ON -DRT_SUPPORT_SANITIZERS=ON -DCMAKE_EXE_LINKER_FLAGS=-L/opt/homebrew/opt/zstd/lib -DCMAKE_C_COMPILER=/usr/bin/cc -DCMAKE_CXX_COMPILER=/usr/bin/c++
+            cmake_flags: -DBUILD_SHARED_LIBS=ON -DRT_SUPPORT_SANITIZERS=ON -DCMAKE_EXE_LINKER_FLAGS=-L/opt/homebrew/opt/zstd/lib
           - job_name: macOS 14, LLVM 16, latest LDC beta
             os: macos-14
             host_dc: ldc-beta
             llvm_version: 16.0.5
-            cmake_flags: -DBUILD_SHARED_LIBS=OFF -DCMAKE_EXE_LINKER_FLAGS=-L/opt/homebrew/opt/zstd/lib -DCMAKE_C_COMPILER=/usr/bin/cc -DCMAKE_CXX_COMPILER=/usr/bin/c++
+            cmake_flags: -DBUILD_SHARED_LIBS=OFF -DCMAKE_EXE_LINKER_FLAGS=-L/opt/homebrew/opt/zstd/lib
           - job_name: Ubuntu 24.04, LLVM 15, latest DMD beta
             os: ubuntu-24.04
             host_dc: dmd-beta
             llvm_version: 15
-            cmake_flags: -DBUILD_SHARED_LIBS=ON -DRT_SUPPORT_SANITIZERS=ON -DLIB_SUFFIX=64 -DLDC_LINK_MANUALLY=ON
+            cmake_flags: -DBUILD_SHARED_LIBS=ON -DRT_SUPPORT_SANITIZERS=ON -DLIB_SUFFIX=64
     name: ${{ matrix.job_name }}
     runs-on: ${{ matrix.os }}
     env:
@@ -68,6 +72,12 @@ jobs:
           set -eux
           sudo apt-get update
           sudo apt-get install gdb lld-${{ matrix.llvm_version }} llvm-${{ matrix.llvm_version }}-dev libclang-common-${{ matrix.llvm_version }}-dev
+
+      - name: 'macOS: Install a more recent GNU make'
+        if: runner.os == 'macOS'
+        run: |
+          brew install make
+          gmake --version
 
       - name: 'macOS: Try to restore cached LLVM'
         if: runner.os == 'macOS'
@@ -114,7 +124,6 @@ jobs:
           cmake -G Ninja . \
             -DCMAKE_BUILD_TYPE=Release \
             -DLLVM_ROOT_DIR=${{ runner.os == 'Linux' && format('/usr/lib/llvm-{0}', matrix.llvm_version) || '"$PWD/llvm"' }} \
-            -DLDC_LINK_MANUALLY=OFF \
             ${{ matrix.cmake_flags }}
           ninja obj/ldc2.o all ldc2-unittest all-test-runners
           bin/ldc2 --version
@@ -129,6 +138,14 @@ jobs:
           if [[ '${{ runner.os }}' == 'Linux' ]]; then
             # FIXME: lsan_interceptors.cpp:82 "((!lsan_init_is_running)) != (0)"
             rm tests/sanitizers/lsan_memleak.d
+          elif [[ '${{ runner.os }}' == 'macOS' ]]; then
+            # work around weird lit-test `plugins/addFuncEntryCall/testPlugin.d`
+            # regression after switching to homebrew make (default CXX is clang++)
+            export CXX=c++
+            if [[ '${{ matrix.cmake_flags }}' =~ -DRT_SUPPORT_SANITIZERS=ON ]]; then
+              # FIXME: regressed with druntime v2.111 on macOS arm64 (but works on Linux x86_64)
+              rm tests/sanitizers/asan_fiber.d
+            fi
           fi
           ctest -V -R "lit-tests"
       - name: Run DMD testsuite
@@ -145,7 +162,9 @@ jobs:
               # FIXME: crashes frequently with enabled optimizations on M1 runners
               excludes+='|^std.internal.math.gammafunction(-shared)?$'
             fi
+            # FIXME: https://github.com/dlang/phobos/issues/10730
+            excludes+='|^std.experimental.allocator.building_blocks.allocator_list'
           else
             N=$(nproc)
           fi
-          ctest -j$N --output-on-failure -E "$excludes"
+          ctest -j$N --output-on-failure -E "$excludes" --timeout 120

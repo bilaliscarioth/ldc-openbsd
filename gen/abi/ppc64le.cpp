@@ -10,7 +10,7 @@
 // The ABI implementation used for 64 bit little-endian PowerPC targets.
 //
 // The PowerOpen 64bit ELF v2 ABI can be found here:
-// https://members.openpowerfoundation.org/document/dl/576
+// https://files.openpower.foundation/s/cfA2oFPXbbZwEBK/download/64biteflv2abi-v1.5.pdf
 //===----------------------------------------------------------------------===//
 
 #include "gen/abi/abi.h"
@@ -28,6 +28,10 @@ struct PPC64LETargetABI : TargetABI {
   IntegerRewrite integerRewrite;
 
   explicit PPC64LETargetABI() : hfvaToArray(8) {}
+
+  llvm::UWTableKind defaultUnwindTableKind() override {
+    return llvm::UWTableKind::Async;
+  }
 
   bool passByVal(TypeFunction *, Type *t) override {
     t = t->toBasetype();
@@ -51,8 +55,8 @@ struct PPC64LETargetABI : TargetABI {
       } else {
         compositeToArray64.applyTo(arg);
       }
-    } else if (ty->isintegral()) {
-      arg.attrs.addAttribute(ty->isunsigned() ? LLAttribute::ZExt
+    } else if (ty->isIntegral() && !ty->isTypeVector()) {
+      arg.attrs.addAttribute(ty->isUnsigned() ? LLAttribute::ZExt
                                               : LLAttribute::SExt);
     }
   }

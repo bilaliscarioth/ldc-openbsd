@@ -167,8 +167,9 @@ struct thread_aux
   {
     static void** getTEB() nothrow @nogc @naked
     {
-        version (Win32)      return __asm!(void**)("mov %fs:(0x18), $0", "=r");
-        else version (Win64) return __asm!(void**)("mov %gs:0($1), $0", "=r,r", 0x30);
+        version (X86)          return __asm!(void**)("mov %fs:(0x18), $0", "=r");
+        else version (X86_64)  return __asm!(void**)("mov %gs:0($1), $0", "=r,r", 0x30);
+        else version (AArch64) return __asm!(void**)("mov $0, x18", "=r");
         else static assert(false);
     }
   }
@@ -176,7 +177,7 @@ struct thread_aux
   {
     static void** getTEB() nothrow @nogc
     {
-        version (Win32)
+        version (D_InlineAsm_X86)
         {
             asm pure nothrow @nogc
             {
@@ -185,7 +186,7 @@ struct thread_aux
                 ret;
             }
         }
-        else version (Win64)
+        else version (D_InlineAsm_X86_64)
         {
             asm pure nothrow @nogc
             {
@@ -194,6 +195,17 @@ struct thread_aux
                 mov RAX,GS:[RAX]; // immediate value causes fixup
                 ret;
             }
+        }
+        else version (GNU_InlineAsm)
+        {
+            void** teb;
+            version (X86)
+                asm pure nothrow @nogc { "movl %%fs:0x18, %0;" : "=r" (teb); }
+            else version (X86_64)
+                asm pure nothrow @nogc { "movq %%gs:0x30, %0;" : "=r" (teb); }
+            else
+                static assert(false);
+            return teb;
         }
         else
         {

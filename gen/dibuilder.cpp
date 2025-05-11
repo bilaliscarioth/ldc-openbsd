@@ -117,7 +117,7 @@ DIBuilder::DIBuilder(IRState *const IR)
       // (https://reviews.llvm.org/D23720)
       emitColumnInfo(opts::getFlagOrDefault(::emitColumnInfo, !emitCodeView)) {}
 
-unsigned DIBuilder::getColumn(const Loc &loc) const {
+unsigned DIBuilder::getColumn(Loc loc) const {
   return (loc.linnum() && emitColumnInfo) ? loc.charnum() : 0;
 }
 
@@ -202,7 +202,7 @@ llvm::StringRef DIBuilder::GetNameAndScope(Dsymbol *sym, DIScope &scope) {
 }
 
 // Sets the memory address for a debuginfo variable.
-void DIBuilder::Declare(const Loc &loc, llvm::Value *storage,
+void DIBuilder::Declare(Loc loc, llvm::Value *storage,
                         DILocalVariable divar, DIExpression diexpr) {
   auto debugLoc = llvm::DILocation::get(IR->context(), loc.linnum(),
                                         getColumn(loc), GetCurrentScope());
@@ -210,7 +210,7 @@ void DIBuilder::Declare(const Loc &loc, llvm::Value *storage,
 }
 
 // Sets the (current) value for a debuginfo variable.
-void DIBuilder::SetValue(const Loc &loc, llvm::Value *value,
+void DIBuilder::SetValue(Loc loc, llvm::Value *value,
                          DILocalVariable divar, DIExpression diexpr) {
   auto debugLoc = llvm::DILocation::get(IR->context(), loc.linnum(),
                                         getColumn(loc), GetCurrentScope());
@@ -241,7 +241,7 @@ DIFile DIBuilder::CreateFile(const char *filename) {
   return DBuilder.createFile(filename, cwd);
 }
 
-DIFile DIBuilder::CreateFile(const Loc &loc) {
+DIFile DIBuilder::CreateFile(Loc loc) {
   return CreateFile(loc.filename());
 }
 
@@ -353,7 +353,7 @@ DIType DIBuilder::CreateEnumType(TypeEnum *type) {
 
   // just emit a typedef for non-integral base types
   auto tb = type->toBasetype();
-  if (!tb->isintegral()) {
+  if (!tb->isIntegral()) {
     auto tbase = CreateTypeDescription(tb);
     return DBuilder.createTypedef(tbase, name, file, lineNumber, scope);
   }
@@ -509,7 +509,7 @@ void DIBuilder::AddStaticMembers(AggregateDeclaration *ad, DIFile file,
   std::function<void(Dsymbols *)> visitMembers = [&](Dsymbols *members) {
     for (auto s : *members) {
       if (auto attrib = s->isAttribDeclaration()) {
-        if (Dsymbols *d = attrib->include(nullptr))
+        if (Dsymbols *d = include(attrib, nullptr))
           visitMembers(d);
       } else if (auto tmixin = s->isTemplateMixin()) {
         // FIXME: static variables inside a template mixin need to be put inside
@@ -739,7 +739,7 @@ DISubroutineType DIBuilder::CreateFunctionType(Type *type,
   };
 
   // the first 'param' is the return value
-  pushParam(t->next, t->isref());
+  pushParam(t->next, t->isRef());
 
   // then the implicit 'this'/context pointer
   if (fd) {
@@ -822,7 +822,7 @@ DIType DIBuilder::CreateTypeDescription(Type *t, bool voidToUbyte) {
     return CreateEnumType(te);
   if (auto tv = t->isTypeVector())
     return CreateVectorType(tv);
-  if (t->isintegral() || t->isfloating())
+  if (t->isIntegral() || t->isFloating())
     return CreateBasicType(t);
   if (auto tp = t->isTypePointer())
     return CreatePointerType(tp);
@@ -1113,7 +1113,7 @@ void DIBuilder::EmitFuncStart(FuncDeclaration *fd) {
   EmitStopPoint(fd->loc);
 }
 
-void DIBuilder::EmitBlockStart(const Loc &loc) {
+void DIBuilder::EmitBlockStart(Loc loc) {
   if (!mustEmitLocationsDebugInfo())
     return;
 
@@ -1138,7 +1138,7 @@ void DIBuilder::EmitBlockEnd() {
   fn->diLexicalBlocks.pop();
 }
 
-void DIBuilder::EmitStopPoint(const Loc &loc) {
+void DIBuilder::EmitStopPoint(Loc loc) {
   if (!mustEmitLocationsDebugInfo())
     return;
 

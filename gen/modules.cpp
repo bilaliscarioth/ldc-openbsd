@@ -22,8 +22,8 @@
 #include "dmd/statement.h"
 #include "dmd/target.h"
 #include "dmd/template.h"
+#include "dmd/timetrace.h"
 #include "driver/cl_options_instrumentation.h"
-#include "driver/timetrace.h"
 #include "gen/abi/abi.h"
 #include "gen/arrays.h"
 #include "gen/functions.h"
@@ -287,10 +287,7 @@ void addCoverageAnalysis(Module *m) {
         LLFunction::Create(ctorTy, LLGlobalValue::InternalLinkage,
                            getIRMangledFuncName(ctorname, LINK::d), &gIR->module);
     ctor->setCallingConv(gABI->callingConv(LINK::d));
-    // Set function attributes. See functions.cpp:DtoDefineFunction()
-    if (global.params.targetTriple->getArch() == llvm::Triple::x86_64) {
-      ctor->setUWTableKind(llvm::UWTableKind::Default);
-    }
+    gABI->setUnwindTableKind(ctor);
 
     llvm::BasicBlock *bb = llvm::BasicBlock::Create(gIR->context(), "", ctor);
     IRBuilder<> builder(bb);
@@ -404,12 +401,29 @@ void addModuleFlags(llvm::Module &m) {
       opts::fCFProtection == opts::CFProtectionType::Full) {
     m.setModuleFlag(ModuleMinFlag, "cf-protection-branch", ConstantOneMetadata);
   }
+
+  // Target specific flags
+  const auto ModuleErrFlag = llvm::Module::Error;
+  switch (global.params.targetTriple->getArch()) {
+  case llvm::Triple::ppc64:
+  case llvm::Triple::ppc64le:
+    if (target.RealProperties.mant_dig == 113) {
+      const auto ConstantIEEE128String = llvm::MDString::get(gIR->context(), "ieeequad");
+      m.setModuleFlag(ModuleErrFlag, "float-abi", ConstantIEEE128String);
+    } else if (target.RealProperties.mant_dig == 106) {
+      const auto ConstantIBM128String = llvm::MDString::get(gIR->context(), "doubledouble");
+      m.setModuleFlag(ModuleErrFlag, "float-abi", ConstantIBM128String);
+    }
+    break;
+  default:
+    break;
+  }
 }
 
 } // anonymous namespace
 
 void codegenModule(IRState *irs, Module *m) {
-  TimeTraceScope timeScope("Generate IR", m->toChars(), m->loc);
+  dmd::TimeTraceScope timeScope("Generate IR", m->toChars(), m->loc);
 
   assert(!irs->dmodule &&
          "irs->module not null, codegen already in progress?!");

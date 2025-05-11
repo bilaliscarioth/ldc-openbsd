@@ -3,10 +3,10 @@
  * The purpose is to make it unnecessary to hardwire them into the compiler.
  * As the leading double underscore suggests, this is for internal use only.
  *
- * Copyright: Copyright D Language Foundation 2022-2024
+ * Copyright: Copyright D Language Foundation 2022-2025
  * License:   $(HTTP www.boost.org/LICENSE_1_0.txt, Boost License 1.0).
  * Authors:   Walter Bright
- * Source: $(DRUNTIMESRC __importc_builtins.d)
+ * Source: $(DRUNTIMESRC __importc_builtins.di)
  */
 
 
@@ -39,11 +39,12 @@ version (LDC)
     }
     else version (ARM_Any)
     {
-        // Darwin does not use __va_list
+        // Darwin and Windows do not use __va_list
         version (OSX) {}
         else version (iOS) {}
         else version (TVOS) {}
         else version (WatchOS) {}
+        else version (CRuntime_Microsoft) {}
         else:
 
         version (ARM)
@@ -115,6 +116,12 @@ version (DigitalMars)
     {
         import core.bitop;
         return core.bitop.bswap(value);
+    }
+
+    uint  __builtin__popcount()(ulong value)
+    {
+        import core.bitop;
+        return core.bitop._popcnt(value);
     }
 
     // Lazily imported on first use

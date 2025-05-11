@@ -113,7 +113,7 @@ bool TargetABI::isAggregate(Type *t) {
   //        by runtime functions, for which we don't apply the rewrites yet
   //        when calling them
   return ty == TY::Tstruct || ty == TY::Tsarray ||
-         /*ty == TY::Tarray ||*/ ty == TY::Tdelegate || t->iscomplex();
+         /*ty == TY::Tarray ||*/ ty == TY::Tdelegate || t->isComplex();
 }
 
 bool TargetABI::isPOD(Type *t, bool excludeStructsWithCtor) {
@@ -153,6 +153,17 @@ llvm::CallingConv::ID TargetABI::callingConv(FuncDeclaration *fdecl) {
   auto tf = fdecl->type->isTypeFunction();
   assert(tf);
   return callingConv(tf, fdecl->needThis() || fdecl->isNested());
+}
+
+void TargetABI::setUnwindTableKind(llvm::Function *fn) {
+  llvm::UWTableKind kind = defaultUnwindTableKind();
+  if (kind != llvm::UWTableKind::None) {
+#if LDC_LLVM_VER >= 1600
+    fn->setUWTableKind(kind);
+#else
+    fn->setUWTableKind(kind);
+#endif
+  }
 }
 
 //////////////////////////////////////////////////////////////////////////////

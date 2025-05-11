@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.4.3)
+cmake_minimum_required(VERSION 3.16.0)
 project(runtime C ASM)
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR})
@@ -12,6 +12,9 @@ if(NOT LDC_EXE)
     endif()
     if(NOT DEFINED DMDFE_MINOR_VERSION OR NOT DEFINED DMDFE_PATCH_VERSION)
         message(FATAL_ERROR "Please define the CMake variables DMDFE_MINOR_VERSION and DMDFE_PATCH_VERSION.")
+    endif()
+    if(NOT DEFINED LDC_WITH_LLD)
+        message(FATAL_ERROR "Please define the CMake variable LDC_WITH_LLD.")
     endif()
 
     # Helper function
@@ -32,7 +35,6 @@ endif()
 
 set(MULTILIB              OFF                                 CACHE BOOL   "Build both 32/64 bit runtime libraries")
 set(BUILD_LTO_LIBS        OFF                                 CACHE BOOL   "Also build the runtime as LLVM bitcode libraries for LTO")
-set(INCLUDE_INSTALL_DIR   ${CMAKE_INSTALL_PREFIX}/include/d   CACHE PATH   "Path to install D modules to")
 set(BUILD_SHARED_LIBS     AUTO                                CACHE STRING "Whether to build the runtime as a shared library (ON|OFF|BOTH)")
 set(D_FLAGS               -w;-de;-preview=dip1000;-preview=dtorfields;-preview=fieldwise CACHE STRING "Runtime D compiler flags, separated by ';'")
 set(D_EXTRA_FLAGS         ""                                  CACHE STRING "Runtime extra D compiler flags, separated by ';'")
@@ -51,7 +53,7 @@ set(CMAKE_INSTALL_LIBDIR ${CMAKE_INSTALL_PREFIX}/lib${LIB_SUFFIX})
 set(DRUNTIME_EXTRA_FLAGS          )
 set(DRUNTIME_EXTRA_UNITTEST_FLAGS -d-version=CoreUnittest -unittest -checkaction=context -linkonce-templates)
 set(PHOBOS2_EXTRA_FLAGS           )
-set(PHOBOS2_EXTRA_UNITTEST_FLAGS  -d-version=StdUnittest -unittest -linkonce-templates)
+set(PHOBOS2_EXTRA_UNITTEST_FLAGS  -d-version=StdUnittest -unittest -checkaction=context -linkonce-templates)
 
 # Shadow the D_FLAGS cache variable by a regular variable containing all base D flags
 set(D_FLAGS ${D_FLAGS} ${D_EXTRA_FLAGS})
@@ -136,13 +138,14 @@ if("${C_SYSTEM_LIBS}" STREQUAL "AUTO")
             set(C_SYSTEM_LIBS m c)
         elseif("${TARGET_SYSTEM}" MATCHES "Linux")
             set(C_SYSTEM_LIBS m pthread rt dl)
-            if("${TARGET_SYSTEM}" MATCHES "musl")
-                list(APPEND C_SYSTEM_LIBS "unwind")
-            endif()
         elseif("${TARGET_SYSTEM}" MATCHES "FreeBSD")
             set(C_SYSTEM_LIBS m pthread execinfo z)
         else()
             set(C_SYSTEM_LIBS m pthread)
+        endif()
+        # some archs need libatomic for 128-bit CAS druntime unittests
+        if(CMAKE_SYSTEM_PROCESSOR MATCHES "riscv64|loongarch64")
+            set(C_SYSTEM_LIBS atomic ${C_SYSTEM_LIBS})
         endif()
         set(C_SYSTEM_LIBS_SHARED ${C_SYSTEM_LIBS})
     endif()
@@ -156,7 +159,6 @@ message(STATUS "--  - Building shared libraries (BUILD_SHARED_LIBS): ${BUILD_SHA
 message(STATUS "--  - Building LTO libraries (BUILD_LTO_LIBS): ${BUILD_LTO_LIBS}")
 message(STATUS "--  - Linking shared libraries (and test runners) with (C_SYSTEM_LIBS): ${C_SYSTEM_LIBS}")
 
-get_directory_property(PROJECT_PARENT_DIR DIRECTORY ${PROJECT_SOURCE_DIR} PARENT_DIRECTORY)
 set(RUNTIME_DIR ${PROJECT_SOURCE_DIR}/druntime CACHE PATH "druntime root directory")
 set(PHOBOS2_DIR ${PROJECT_SOURCE_DIR}/phobos CACHE PATH "Phobos root directory")
 set(JITRT_DIR ${PROJECT_SOURCE_DIR}/jit-rt CACHE PATH "jit runtime root directory")
@@ -168,8 +170,6 @@ set(JITRT_DIR ${PROJECT_SOURCE_DIR}/jit-rt CACHE PATH "jit runtime root director
 # druntime D parts
 file(GLOB_RECURSE DRUNTIME_D ${RUNTIME_DIR}/src/*.d)
 list(REMOVE_ITEM DRUNTIME_D ${RUNTIME_DIR}/src/test_runner.d)
-# remove unsupported etc/linux/memoryerror.d (see issue #1915)
-list(REMOVE_ITEM DRUNTIME_D ${RUNTIME_DIR}/src/etc/linux/memoryerror.d)
 # remove some modules in rt/
 list(REMOVE_ITEM DRUNTIME_D
     ${RUNTIME_DIR}/src/rt/alloca.d
@@ -180,7 +180,6 @@ list(REMOVE_ITEM DRUNTIME_D
     ${RUNTIME_DIR}/src/rt/sections_osx_x86.d
     ${RUNTIME_DIR}/src/rt/sections_osx_x86_64.d
     ${RUNTIME_DIR}/src/rt/sections_solaris.d
-    ${RUNTIME_DIR}/src/rt/sections_win32.d
 )
 # only include core/sys/ modules matching the platform
 file(GLOB_RECURSE DRUNTIME_D_BIONIC  ${RUNTIME_DIR}/src/core/sys/bionic/*.d)
@@ -232,7 +231,7 @@ endif()
 # druntime ASM parts
 set(DRUNTIME_ASM)
 if("${TARGET_SYSTEM}" MATCHES "UNIX")
-    list(APPEND DRUNTIME_ASM ${RUNTIME_DIR}/src/core/threadasm.S ${RUNTIME_DIR}/src/ldc/eh_asm.S)
+    list(APPEND DRUNTIME_ASM ${RUNTIME_DIR}/src/core/thread/fiber/switch_context_asm.S ${RUNTIME_DIR}/src/ldc/eh_asm.S)
 endif()
 
 if(PHOBOS2_DIR)
@@ -298,95 +297,78 @@ endif()
 # LLD 8+ requires (new) `--export-dynamic` for WebAssembly (https://github.com/ldc-developers/ldc/issues/3023).
 set(WASM_DEFAULT_LDC_SWITCHES "${WASM_DEFAULT_LDC_SWITCHES}\n        \"-L--export-dynamic\",")
 
-# Directory filled with auto-generated import files
-set(LDC_BUILD_IMPORT_DIR "${PROJECT_BINARY_DIR}/import")
+# Note: normally inherited from LDC CMake parent build, and only needed for ldc2_install.conf
+set(INCLUDE_INSTALL_DIR "${CMAKE_INSTALL_PREFIX}/include/d" CACHE PATH "Path the D modules are installed to")
 
-# Only generate the config files if this CMake project is embedded in the LDC CMake project.
+# Note: default value only works if embedded in LDC CMake parent build, but only needed for ImportC (__importc_builtins.di) and non-install ldc2.conf
+set(LDC_GCCBUILTINS_IMPORT_DIR "${CMAKE_BINARY_DIR}/import" CACHE PATH "Directory filled with auto-generated ldc/gccbuiltins_*.di files")
+
+# Generate .conf files
 if(LDC_EXE)
-    if(PHOBOS2_DIR)
-        set(CONFIG_NAME ${LDC_EXE}_phobos)
-    else()
-        set(CONFIG_NAME ${LDC_EXE})
-    endif()
-    set(conf_path         ${PROJECT_BINARY_DIR}/../bin/${LDC_EXE}.conf)
-    set(install_conf_path ${PROJECT_BINARY_DIR}/../bin/${LDC_EXE}_install.conf)
-    configure_file(${PROJECT_PARENT_DIR}/${CONFIG_NAME}.conf.in ${conf_path} @ONLY)
-    configure_file(${PROJECT_PARENT_DIR}/${LDC_EXE}_install.conf.in ${install_conf_path} @ONLY)
+    set(CONFIG_BASE ${LDC_EXE})
+else() # not included from LDC parent build
+    set(CONFIG_BASE ldc2)
+endif()
+if(PHOBOS2_DIR)
+    set(CONFIG_NAME ${CONFIG_BASE}_phobos)
+else()
+    set(CONFIG_NAME ${CONFIG_BASE})
+endif()
+set(conf_path         ${CMAKE_BINARY_DIR}/etc/${CONFIG_BASE}.conf)
+set(install_conf_path ${CMAKE_BINARY_DIR}/etc/${CONFIG_BASE}_install.conf)
+configure_file(${PROJECT_SOURCE_DIR}/../${CONFIG_NAME}.conf.in ${conf_path} @ONLY)
+configure_file(${PROJECT_SOURCE_DIR}/../${CONFIG_BASE}_install.conf.in ${install_conf_path} @ONLY)
 
-    # macOS has fat libraries; otherwise, append a separate config file section for the
-    # multilib target and override the lib directory.
-    if(MULTILIB AND NOT "${TARGET_SYSTEM}" MATCHES "APPLE")
-        # Rename the just configured host-only *.conf files to *.conf.in during CMake invocation.
-        file(RENAME ${conf_path} ${conf_path}.in)
-        file(RENAME ${install_conf_path} ${install_conf_path}.in)
+# macOS has fat libraries; otherwise, append a separate config file section for the
+# multilib target and override the lib directory.
+if(MULTILIB AND NOT "${TARGET_SYSTEM}" MATCHES "APPLE")
+    # Rename the just configured host-only *.conf files to *.conf.in during CMake invocation.
+    file(RENAME ${conf_path} ${conf_path}.in)
+    file(RENAME ${install_conf_path} ${install_conf_path}.in)
 
-        set(MULTILIB_DIR         "${CMAKE_BINARY_DIR}/lib${MULTILIB_SUFFIX}")
-        set(MULTILIB_INSTALL_DIR "${CMAKE_INSTALL_PREFIX}/lib${MULTILIB_SUFFIX}")
+    set(MULTILIB_DIR         "${CMAKE_BINARY_DIR}/lib${MULTILIB_SUFFIX}")
+    set(MULTILIB_INSTALL_DIR "${CMAKE_INSTALL_PREFIX}/lib${MULTILIB_SUFFIX}")
 
-        # The helper script determines the multilib triple by parsing the
-        # `ldc2 -m32 -v` output. This means we depend on a built ldc2
-        # executable; sadly, we cannot add post-build commands to that
-        # top-level target directly, so use a custom target (built as part
-        # of `all`) to finalize the 2 config files.
-        add_custom_command(OUTPUT ${conf_path} VERBATIM
-            COMMAND ${PROJECT_PARENT_DIR}/tools/add-multilib-section.sh
-                    ${LDC_EXE_FULL}
-                    ${MULTILIB_SUFFIX}
-                    ${MULTILIB_DIR}
-                    "$<$<BOOL:${SHARED_LIBS_SUPPORTED}>:${MULTILIB_DIR}>"
-                    ${conf_path}.in
-                    ${conf_path}
-            DEPENDS ${LDC_EXE_FULL}
-        )
-        add_custom_command(OUTPUT ${install_conf_path} VERBATIM
-            COMMAND ${PROJECT_PARENT_DIR}/tools/add-multilib-section.sh
-                    ${LDC_EXE_FULL}
-                    ${MULTILIB_SUFFIX}
-                    ${MULTILIB_INSTALL_DIR}
-                    "$<$<BOOL:${SHARED_LIBS_SUPPORTED}>:${MULTILIB_INSTALL_DIR}>"
-                    ${install_conf_path}.in
-                    ${install_conf_path}
-            DEPENDS ${LDC_EXE_FULL}
-        )
-        add_custom_target(add-multilib-section ALL
-            DEPENDS ${conf_path} ${install_conf_path}
-        )
-    endif()
+    # The helper script determines the multilib triple by parsing the
+    # `ldc2 -m32 -v` output. This means we depend on a built ldc2
+    # executable; sadly, we cannot add post-build commands to that
+    # top-level target directly, so use a custom target (built as part
+    # of `all`) to finalize the 2 config files.
+    add_custom_command(OUTPUT ${conf_path} VERBATIM
+        COMMAND ${PROJECT_SOURCE_DIR}/../tools/add-multilib-section.sh
+                ${LDC_EXE_FULL}
+                ${MULTILIB_SUFFIX}
+                ${MULTILIB_DIR}
+                "$<$<BOOL:${SHARED_LIBS_SUPPORTED}>:${MULTILIB_DIR}>"
+                ${conf_path}.in
+                ${conf_path}
+        DEPENDS ${LDC_EXE_FULL}
+    )
+    add_custom_command(OUTPUT ${install_conf_path} VERBATIM
+        COMMAND ${PROJECT_SOURCE_DIR}/../tools/add-multilib-section.sh
+                ${LDC_EXE_FULL}
+                ${MULTILIB_SUFFIX}
+                ${MULTILIB_INSTALL_DIR}
+                "$<$<BOOL:${SHARED_LIBS_SUPPORTED}>:${MULTILIB_INSTALL_DIR}>"
+                ${install_conf_path}.in
+                ${install_conf_path}
+        DEPENDS ${LDC_EXE_FULL}
+    )
+    add_custom_target(add-multilib-section ALL
+        DEPENDS ${conf_path} ${install_conf_path}
+    )
+endif()
+
+if(NOT DEFINED CONF_INST_DIR) # set by parent LDC build
+    set(CONF_INST_DIR "${CMAKE_INSTALL_PREFIX}/etc")
+endif()
+if(NOT CONF_INST_DIR STREQUAL "") # allow skipping the ldc2.conf installation
+    install(FILES ${install_conf_path} DESTINATION ${CONF_INST_DIR} RENAME ${CONFIG_BASE}.conf)
 endif()
 
 #
 # druntime/Phobos compilation helpers.
 #
-
-set(GCCBUILTINS "")
-if(TARGET gen_gccbuiltins)
-  file(MAKE_DIRECTORY "${LDC_BUILD_IMPORT_DIR}/ldc")
-
-  function(gen_gccbuiltins name)
-    set(module "${LDC_BUILD_IMPORT_DIR}/ldc/gccbuiltins_${name}.di")
-    if (GCCBUILTINS STREQUAL "")
-      set(GCCBUILTINS "${module}" PARENT_SCOPE)
-    else()
-      set(GCCBUILTINS "${GCCBUILTINS};${module}" PARENT_SCOPE)
-    endif()
-    add_custom_command(
-        OUTPUT ${module}
-        COMMAND gen_gccbuiltins ${module} "${name}"
-        DEPENDS gen_gccbuiltins
-    )
-  endfunction()
-
-  set(target_arch "AArch64;AMDGPU;ARM;Mips;RISCV;NVPTX;PowerPC;SystemZ;X86")
-  set(target_name "aarch64;amdgcn;arm;mips;riscv;nvvm;ppc;s390;x86")
-
-  foreach(target ${LLVM_TARGETS_TO_BUILD})
-    list(FIND target_arch ${target} idx)
-    if(idx GREATER -1)
-      list(GET target_name ${idx} name)
-      gen_gccbuiltins(${name})
-    endif()
-  endforeach()
-endif()
 
 # Always build zlib and other C parts of the runtime in release mode, regardless
 # of what the user chose for LDC itself. Also add other C_FLAGS here.
@@ -438,7 +420,7 @@ macro(dc src_files src_basedir d_flags output_basedir emit_bc all_at_once single
 
     # dc_deps can only contain paths, otherwise cmake will ignore the dependency.
     # See: https://github.com/ldc-developers/ldc/pull/4743#issuecomment-2323156173
-    set(dc_deps ${LDC_EXE_FULL} ${GCCBUILTINS})
+    set(dc_deps ${LDC_EXE_FULL})
     if(TARGET add-multilib-section)
         # Make sure the config files are available before invoking LDC.
         set(dc_deps ${dc_deps} add-multilib-section)
@@ -553,7 +535,7 @@ macro(compile_druntime d_flags lib_suffix path_suffix emit_bc all_at_once single
     endif()
     dc("${DRUNTIME_D}"
        "${RUNTIME_DIR}/src"
-       "-conf=;${d_flags};${DRUNTIME_EXTRA_FLAGS};-I${RUNTIME_DIR}/src;-I${LDC_BUILD_IMPORT_DIR}"
+       "-conf=;${d_flags};${DRUNTIME_EXTRA_FLAGS};-I${RUNTIME_DIR}/src"
        "${PROJECT_BINARY_DIR}/objects${target_suffix}"
        "${emit_bc}"
        "${all_at_once}"
@@ -608,6 +590,7 @@ function(set_common_library_properties target name output_dir c_flags ld_flags i
         COMPILE_DEFINITIONS         "LDC=1"
         COMPILE_FLAGS               "${c_flags}"
         LINK_FLAGS                  "${full_ldflags}"
+        MSVC_RUNTIME_LIBRARY        "" # see reasoning for `/MT /Zl` above
         VERSION                     ${DMDFE_MINOR_VERSION}.${DMDFE_PATCH_VERSION}
         SOVERSION                   ${DMDFE_MINOR_VERSION}
         LINKER_LANGUAGE             C
@@ -875,32 +858,23 @@ foreach(libname ${libs_to_install})
         # import .lib in regular lib dir
         install(FILES       $<TARGET_LINKER_FILE:${libname}>
                 DESTINATION ${destination_dir})
-        # .dll in bin dir
+        # when included from the LDC parent build, install .dll and .pdb into bin/
+        if(LDC_EXE)
+            set(destination_dir ${CMAKE_INSTALL_PREFIX}/bin)
+        endif()
+        # .dll in bin or lib dir
         install(FILES       $<TARGET_FILE:${libname}>
-                DESTINATION ${CMAKE_INSTALL_PREFIX}/bin)
-        # .pdb of debug DLLs in bin dir
+                DESTINATION ${destination_dir})
+        # .pdb of debug DLLs in bin or lib dir
         if(${libname} MATCHES "-debug")
             install(FILES       $<TARGET_PDB_FILE:${libname}>
-                    DESTINATION ${CMAKE_INSTALL_PREFIX}/bin)
+                    DESTINATION ${destination_dir})
         endif()
     else()
         install(TARGETS     ${libname}
                 DESTINATION ${destination_dir})
     endif()
 endforeach()
-
-set(DRUNTIME_PACKAGES core etc ldc)
-
-install(FILES ${RUNTIME_DIR}/src/object.d ${RUNTIME_DIR}/src/__importc_builtins.di ${RUNTIME_DIR}/src/importc.h DESTINATION ${INCLUDE_INSTALL_DIR})
-foreach(p ${DRUNTIME_PACKAGES})
-    install(DIRECTORY ${RUNTIME_DIR}/src/${p} DESTINATION ${INCLUDE_INSTALL_DIR} FILES_MATCHING PATTERN "*.d")
-    install(DIRECTORY ${RUNTIME_DIR}/src/${p} DESTINATION ${INCLUDE_INSTALL_DIR} FILES_MATCHING PATTERN "*.di")
-endforeach()
-if(PHOBOS2_DIR)
-    install(DIRECTORY ${PHOBOS2_DIR}/std DESTINATION ${INCLUDE_INSTALL_DIR} FILES_MATCHING PATTERN "*.d")
-    install(DIRECTORY ${PHOBOS2_DIR}/etc DESTINATION ${INCLUDE_INSTALL_DIR} FILES_MATCHING PATTERN "*.d")
-endif()
-install(FILES ${GCCBUILTINS} DESTINATION ${INCLUDE_INSTALL_DIR}/ldc)
 
 
 #
@@ -1096,10 +1070,6 @@ macro(file_to_module_name file_name out_module_name)
     # The logical module name for package.d files doesn't include the
     # trailing .package part.
     string(REPLACE ".package" "" module ${module})
-
-    # rt.invariant doesn't have a module declaration, presumably because
-    # invariant is a keyword.
-    string(REPLACE "rt.invariant" "invariant" ${out_module_name} ${module})
 endmacro()
 
 function(add_tests d_files runner target_suffix)

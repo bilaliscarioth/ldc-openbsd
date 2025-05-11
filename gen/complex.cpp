@@ -70,7 +70,7 @@ LLConstant *DtoConstComplex(Type *_ty, real_t re, real_t im) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-DValue *DtoComplex(const Loc &loc, Type *to, DValue *val) {
+DValue *DtoComplex(Loc loc, Type *to, DValue *val) {
   LLType *complexTy = DtoType(to);
 
   Type *baserety;
@@ -116,7 +116,7 @@ void DtoComplexSet(LLType* ty, LLValue *c, LLValue *re, LLValue *im) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void DtoGetComplexParts(const Loc &loc, Type *to, DValue *val, DValue *&re,
+void DtoGetComplexParts(Loc loc, Type *to, DValue *val, DValue *&re,
                         DValue *&im) {
   Type *baserety;
   Type *baseimty;
@@ -139,9 +139,9 @@ void DtoGetComplexParts(const Loc &loc, Type *to, DValue *val, DValue *&re,
 
   Type *t = val->type->toBasetype();
 
-  if (t->iscomplex()) {
+  if (t->isComplex()) {
     DValue *v = DtoCastComplex(loc, val, to);
-    if (to->iscomplex()) {
+    if (to->isComplex()) {
       if (v->isLVal()) {
         LLValue *reVal = DtoGEP(DtoType(v->type), DtoLVal(v), 0u, 0, ".re_part");
         LLValue *imVal = DtoGEP(DtoType(v->type), DtoLVal(v), 0, 1, ".im_part");
@@ -158,13 +158,13 @@ void DtoGetComplexParts(const Loc &loc, Type *to, DValue *val, DValue *&re,
     } else {
       DtoGetComplexParts(loc, to, v, re, im);
     }
-  } else if (t->isimaginary()) {
+  } else if (t->isImaginary()) {
     re = nullptr;
     im = DtoCastFloat(loc, val, baseimty);
-  } else if (t->isfloating()) {
+  } else if (t->isFloating()) {
     re = DtoCastFloat(loc, val, baserety);
     im = nullptr;
-  } else if (t->isintegral()) {
+  } else if (t->isIntegral()) {
     re = DtoCastInt(loc, val, baserety);
     im = nullptr;
   } else {
@@ -174,7 +174,7 @@ void DtoGetComplexParts(const Loc &loc, Type *to, DValue *val, DValue *&re,
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void DtoGetComplexParts(const Loc &loc, Type *to, DValue *val, LLValue *&re,
+void DtoGetComplexParts(Loc loc, Type *to, DValue *val, LLValue *&re,
                         LLValue *&im) {
   DValue *dre, *dim;
   DtoGetComplexParts(loc, to, val, dre, dim);
@@ -184,8 +184,7 @@ void DtoGetComplexParts(const Loc &loc, Type *to, DValue *val, LLValue *&re,
 
 ////////////////////////////////////////////////////////////////////////////////
 
-DImValue *DtoComplexAdd(const Loc &loc, Type *type, DRValue *lhs,
-                        DRValue *rhs) {
+DImValue *DtoComplexAdd(Loc loc, Type *type, DRValue *lhs, DRValue *rhs) {
   llvm::Value *lhs_re, *lhs_im, *rhs_re, *rhs_im, *res_re, *res_im;
 
   // lhs values
@@ -216,8 +215,7 @@ DImValue *DtoComplexAdd(const Loc &loc, Type *type, DRValue *lhs,
 
 ////////////////////////////////////////////////////////////////////////////////
 
-DImValue *DtoComplexMin(const Loc &loc, Type *type, DRValue *lhs,
-                        DRValue *rhs) {
+DImValue *DtoComplexMin(Loc loc, Type *type, DRValue *lhs, DRValue *rhs) {
   llvm::Value *lhs_re, *lhs_im, *rhs_re, *rhs_im, *res_re, *res_im;
 
   // lhs values
@@ -248,8 +246,7 @@ DImValue *DtoComplexMin(const Loc &loc, Type *type, DRValue *lhs,
 
 ////////////////////////////////////////////////////////////////////////////////
 
-DImValue *DtoComplexMul(const Loc &loc, Type *type, DRValue *lhs,
-                        DRValue *rhs) {
+DImValue *DtoComplexMul(Loc loc, Type *type, DRValue *lhs, DRValue *rhs) {
   llvm::Value *lhs_re, *lhs_im, *rhs_re, *rhs_im, *res_re, *res_im;
 
   // lhs values
@@ -302,8 +299,7 @@ DImValue *DtoComplexMul(const Loc &loc, Type *type, DRValue *lhs,
 
 ////////////////////////////////////////////////////////////////////////////////
 
-DImValue *DtoComplexDiv(const Loc &loc, Type *type, DRValue *lhs,
-                        DRValue *rhs) {
+DImValue *DtoComplexDiv(Loc loc, Type *type, DRValue *lhs, DRValue *rhs) {
   llvm::Value *lhs_re, *lhs_im, *rhs_re, *rhs_im, *res_re, *res_im;
 
   // lhs values
@@ -376,8 +372,7 @@ DImValue *DtoComplexDiv(const Loc &loc, Type *type, DRValue *lhs,
 
 ////////////////////////////////////////////////////////////////////////////////
 
-DImValue *DtoComplexMod(const Loc &loc, Type *type, DRValue *lhs,
-                        DRValue *rhs) {
+DImValue *DtoComplexMod(Loc loc, Type *type, DRValue *lhs, DRValue *rhs) {
   llvm::Value *lhs_re, *lhs_im, *rhs_re, *rhs_im, *res_re, *res_im, *divisor;
 
   // lhs values
@@ -398,7 +393,7 @@ DImValue *DtoComplexMod(const Loc &loc, Type *type, DRValue *lhs,
 
 ////////////////////////////////////////////////////////////////////////////////
 
-DImValue *DtoComplexNeg(const Loc &loc, Type *type, DRValue *val) {
+DImValue *DtoComplexNeg(Loc loc, Type *type, DRValue *val) {
   llvm::Value *a, *b, *re, *im;
 
   // values
@@ -415,7 +410,7 @@ DImValue *DtoComplexNeg(const Loc &loc, Type *type, DRValue *val) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-LLValue *DtoComplexEquals(const Loc &loc, EXP op, DValue *lhs, DValue *rhs) {
+LLValue *DtoComplexEquals(Loc loc, EXP op, DValue *lhs, DValue *rhs) {
   DValue *lhs_re, *lhs_im, *rhs_re, *rhs_im;
 
   // lhs values
@@ -433,10 +428,10 @@ LLValue *DtoComplexEquals(const Loc &loc, EXP op, DValue *lhs, DValue *rhs) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-DValue *DtoCastComplex(const Loc &loc, DValue *val, Type *_to) {
+DValue *DtoCastComplex(Loc loc, DValue *val, Type *_to) {
   Type *to = _to->toBasetype();
   Type *vty = val->type->toBasetype();
-  if (to->iscomplex()) {
+  if (to->isComplex()) {
     if (size(vty) == size(to)) {
       return val;
     }
@@ -456,7 +451,7 @@ DValue *DtoCastComplex(const Loc &loc, DValue *val, Type *_to) {
     LLValue *pair = DtoAggrPair(DtoType(_to), re, im);
     return new DImValue(_to, pair);
   }
-  if (to->isimaginary()) {
+  if (to->isImaginary()) {
     // FIXME: this loads both values, even when we only need one
     LLValue *v = DtoRVal(val);
     LLValue *impart = gIR->ir->CreateExtractValue(v, 1, ".im_part");
@@ -481,7 +476,7 @@ DValue *DtoCastComplex(const Loc &loc, DValue *val, Type *_to) {
     return new DImValue(
         _to, DtoComplexEquals(loc, EXP::notEqual, val, DtoNullValue(vty)));
   }
-  if (to->isfloating() || to->isintegral()) {
+  if (to->isFloating() || to->isIntegral()) {
     // FIXME: this loads both values, even when we only need one
     LLValue *v = DtoRVal(val);
     LLValue *repart = gIR->ir->CreateExtractValue(v, 0, ".re_part");

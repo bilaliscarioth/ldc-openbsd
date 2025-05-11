@@ -83,7 +83,7 @@ llvm::LLVMContext &getGlobalContext() { return *GlobalContext; }
  * DYNAMIC MEMORY HELPERS
  ******************************************************************************/
 
-LLValue *DtoNew(const Loc &loc, Type *newtype) {
+LLValue *DtoNew(Loc loc, Type *newtype) {
   // get runtime function
   llvm::Function *fn = getRuntimeFunction(loc, gIR->module, "_d_allocmemoryT");
   // get type info
@@ -93,31 +93,31 @@ LLValue *DtoNew(const Loc &loc, Type *newtype) {
   return gIR->CreateCallOrInvoke(fn, ti, ".gc_mem");
 }
 
-void DtoDeleteMemory(const Loc &loc, DValue *ptr) {
+void DtoDeleteMemory(Loc loc, DValue *ptr) {
   llvm::Function *fn = getRuntimeFunction(loc, gIR->module, "_d_delmemory");
   LLValue *lval = (ptr->isLVal() ? DtoLVal(ptr) : makeLValue(loc, ptr));
   gIR->CreateCallOrInvoke(fn, lval);
 }
 
-void DtoDeleteStruct(const Loc &loc, DValue *ptr) {
+void DtoDeleteStruct(Loc loc, DValue *ptr) {
   llvm::Function *fn = getRuntimeFunction(loc, gIR->module, "_d_delstruct");
   LLValue *lval = (ptr->isLVal() ? DtoLVal(ptr) : makeLValue(loc, ptr));
   gIR->CreateCallOrInvoke(fn, lval, DtoTypeInfoOf(loc, ptr->type->nextOf()));
 }
 
-void DtoDeleteClass(const Loc &loc, DValue *inst) {
+void DtoDeleteClass(Loc loc, DValue *inst) {
   llvm::Function *fn = getRuntimeFunction(loc, gIR->module, "_d_delclass");
   LLValue *lval = (inst->isLVal() ? DtoLVal(inst) : makeLValue(loc, inst));
   gIR->CreateCallOrInvoke(fn, lval);
 }
 
-void DtoDeleteInterface(const Loc &loc, DValue *inst) {
+void DtoDeleteInterface(Loc loc, DValue *inst) {
   llvm::Function *fn = getRuntimeFunction(loc, gIR->module, "_d_delinterface");
   LLValue *lval = (inst->isLVal() ? DtoLVal(inst) : makeLValue(loc, inst));
   gIR->CreateCallOrInvoke(fn, lval);
 }
 
-void DtoDeleteArray(const Loc &loc, DValue *arr) {
+void DtoDeleteArray(Loc loc, DValue *arr) {
   llvm::Function *fn = getRuntimeFunction(loc, gIR->module, "_d_delarray_t");
 
   // the TypeInfo argument must be null if the type has no dtor
@@ -247,7 +247,7 @@ LLValue *DtoAllocaDump(LLValue *val, LLType *asType, int alignment,
  * ASSERT HELPERS
  ******************************************************************************/
 
-void DtoAssert(Module *M, const Loc &loc, DValue *msg) {
+void DtoAssert(Module *M, Loc loc, DValue *msg) {
   // func
   const char *fname = msg ? "_d_assert_msg" : "_d_assert";
   llvm::Function *fn = getRuntimeFunction(loc, gIR->module, fname);
@@ -273,7 +273,7 @@ void DtoAssert(Module *M, const Loc &loc, DValue *msg) {
   gIR->ir->CreateUnreachable();
 }
 
-void DtoCAssert(Module *M, const Loc &loc, LLValue *msg) {
+void DtoCAssert(Module *M, Loc loc, LLValue *msg) {
   const auto &triple = *global.params.targetTriple;
   const auto file =
       DtoConstCString(loc.filename() ? loc.filename() : M->srcfile.toChars());
@@ -326,7 +326,7 @@ void DtoCAssert(Module *M, const Loc &loc, LLValue *msg) {
  * THROW HELPER
  ******************************************************************************/
 
-void DtoThrow(const Loc &loc, DValue *e) {
+void DtoThrow(Loc loc, DValue *e) {
   LLFunction *fn = getRuntimeFunction(loc, gIR->module, "_d_throw_exception");
   LLValue *arg = DtoRVal(e);
 
@@ -341,7 +341,7 @@ void DtoThrow(const Loc &loc, DValue *e) {
  * MODULE FILE NAME
  ******************************************************************************/
 
-LLConstant *DtoModuleFileName(Module *M, const Loc &loc) {
+LLConstant *DtoModuleFileName(Module *M, Loc loc) {
   return DtoConstString(loc.filename() ? loc.filename() : M->srcfile.toChars());
 }
 
@@ -349,7 +349,7 @@ LLConstant *DtoModuleFileName(Module *M, const Loc &loc) {
  * GOTO HELPER
  ******************************************************************************/
 
-void DtoGoto(const Loc &loc, LabelDsymbol *target) {
+void DtoGoto(Loc loc, LabelDsymbol *target) {
   assert(!gIR->scopereturned());
 
   LabelStatement *lblstmt = target->statement;
@@ -367,7 +367,7 @@ void DtoGoto(const Loc &loc, LabelDsymbol *target) {
 
 // is this a good approach at all ?
 
-void DtoAssign(const Loc &loc, DValue *lhs, DValue *rhs, EXP op,
+void DtoAssign(Loc loc, DValue *lhs, DValue *rhs, EXP op,
                bool canSkipPostblit) {
   IF_LOG Logger::println("DtoAssign()");
   LOG_SCOPE;
@@ -418,7 +418,7 @@ void DtoAssign(const Loc &loc, DValue *lhs, DValue *rhs, EXP op,
       Logger::cout() << "r : " << *r << '\n';
     }
     DtoStore(r, l);
-  } else if (t->iscomplex()) {
+  } else if (t->isComplex()) {
     LLValue *dst = DtoLVal(lhs);
     LLValue *src = DtoRVal(DtoCast(loc, rhs, lhs->type));
     DtoStore(src, dst);
@@ -461,7 +461,7 @@ DValue *DtoNullValue(Type *type, Loc loc) {
   LLType *lltype = DtoType(basetype);
 
   // complex, needs to be first since complex are also floating
-  if (basetype->iscomplex()) {
+  if (basetype->isComplex()) {
     LLType *basefp = DtoComplexBaseType(basetype);
     LLValue *res = DtoAggrPair(DtoType(type), LLConstant::getNullValue(basefp),
                                LLConstant::getNullValue(basefp));
@@ -469,7 +469,7 @@ DValue *DtoNullValue(Type *type, Loc loc) {
   }
   // integer, floating, pointer, assoc array, delegate and class have no special
   // representation
-  if (basetype->isintegral() || basetype->isfloating() ||
+  if (basetype->isIntegral() || basetype->isFloating() ||
       basety == TY::Tpointer || basety == TY::Tnull || basety == TY::Tclass ||
       basety == TY::Tdelegate || basety == TY::Taarray) {
     return new DNullValue(type, LLConstant::getNullValue(lltype));
@@ -488,12 +488,12 @@ DValue *DtoNullValue(Type *type, Loc loc) {
  * CASTING HELPERS
  ******************************************************************************/
 
-DValue *DtoCastInt(const Loc &loc, DValue *val, Type *_to) {
+DValue *DtoCastInt(Loc loc, DValue *val, Type *_to) {
   LLType *tolltype = DtoType(_to);
 
   Type *to = _to->toBasetype();
   Type *from = val->type->toBasetype();
-  assert(from->isintegral());
+  assert(from->isIntegral());
 
   LLValue *rval = DtoRVal(val);
   if (rval->getType() == tolltype) {
@@ -506,7 +506,7 @@ DValue *DtoCastInt(const Loc &loc, DValue *val, Type *_to) {
   if (to->ty == TY::Tbool) {
     LLValue *zero = LLConstantInt::get(rval->getType(), 0, false);
     rval = gIR->ir->CreateICmpNE(rval, zero);
-  } else if (to->isintegral()) {
+  } else if (to->isIntegral()) {
     if (fromsz < tosz || from->ty == TY::Tbool) {
       IF_LOG Logger::cout() << "cast to: " << *tolltype << '\n';
       if (isLLVMUnsigned(from) || from->ty == TY::Tbool) {
@@ -519,10 +519,10 @@ DValue *DtoCastInt(const Loc &loc, DValue *val, Type *_to) {
     } else {
       rval = DtoBitCast(rval, tolltype);
     }
-  } else if (to->iscomplex()) {
+  } else if (to->isComplex()) {
     return DtoComplex(loc, to, val);
-  } else if (to->isfloating()) {
-    if (from->isunsigned()) {
+  } else if (to->isFloating()) {
+    if (from->isUnsigned()) {
       rval = new llvm::UIToFPInst(rval, tolltype, "", gIR->scopebb());
     } else {
       rval = new llvm::SIToFPInst(rval, tolltype, "", gIR->scopebb());
@@ -539,7 +539,7 @@ DValue *DtoCastInt(const Loc &loc, DValue *val, Type *_to) {
   return new DImValue(_to, rval);
 }
 
-DValue *DtoCastPtr(const Loc &loc, DValue *val, Type *to) {
+DValue *DtoCastPtr(Loc loc, DValue *val, Type *to) {
   LLType *tolltype = DtoType(to);
 
   Type *totype = to->toBasetype();
@@ -561,7 +561,7 @@ DValue *DtoCastPtr(const Loc &loc, DValue *val, Type *to) {
     LLValue *src = DtoRVal(val);
     LLValue *zero = LLConstant::getNullValue(src->getType());
     rval = gIR->ir->CreateICmpNE(src, zero);
-  } else if (totype->isintegral()) {
+  } else if (totype->isIntegral()) {
     rval = new llvm::PtrToIntInst(DtoRVal(val), tolltype, "", gIR->scopebb());
   } else {
     error(loc, "invalid cast from `%s` to `%s`", val->type->toChars(),
@@ -572,7 +572,7 @@ DValue *DtoCastPtr(const Loc &loc, DValue *val, Type *to) {
   return new DImValue(to, rval);
 }
 
-DValue *DtoCastFloat(const Loc &loc, DValue *val, Type *to) {
+DValue *DtoCastFloat(Loc loc, DValue *val, Type *to) {
   if (val->type == to) {
     return val;
   }
@@ -581,7 +581,7 @@ DValue *DtoCastFloat(const Loc &loc, DValue *val, Type *to) {
 
   Type *totype = to->toBasetype();
   Type *fromtype = val->type->toBasetype();
-  assert(fromtype->isfloating());
+  assert(fromtype->isFloating());
 
   size_t fromsz = size(fromtype);
   size_t tosz = size(totype);
@@ -592,9 +592,9 @@ DValue *DtoCastFloat(const Loc &loc, DValue *val, Type *to) {
     rval = DtoRVal(val);
     LLValue *zero = LLConstant::getNullValue(rval->getType());
     rval = gIR->ir->CreateFCmpUNE(rval, zero);
-  } else if (totype->iscomplex()) {
+  } else if (totype->isComplex()) {
     return DtoComplex(loc, to, val);
-  } else if (totype->isfloating()) {
+  } else if (totype->isFloating()) {
     if (fromsz == tosz) {
       rval = DtoRVal(val);
       assert(rval->getType() == tolltype);
@@ -607,8 +607,8 @@ DValue *DtoCastFloat(const Loc &loc, DValue *val, Type *to) {
             to->toChars());
       fatal();
     }
-  } else if (totype->isintegral()) {
-    if (totype->isunsigned()) {
+  } else if (totype->isIntegral()) {
+    if (totype->isUnsigned()) {
       rval = new llvm::FPToUIInst(DtoRVal(val), tolltype, "", gIR->scopebb());
     } else {
       rval = new llvm::FPToSIInst(DtoRVal(val), tolltype, "", gIR->scopebb());
@@ -622,7 +622,7 @@ DValue *DtoCastFloat(const Loc &loc, DValue *val, Type *to) {
   return new DImValue(to, rval);
 }
 
-DValue *DtoCastDelegate(const Loc &loc, DValue *val, Type *to) {
+DValue *DtoCastDelegate(Loc loc, DValue *val, Type *to) {
   if (to->toBasetype()->ty == TY::Tdelegate) {
     return DtoPaintType(loc, val, to);
   }
@@ -635,7 +635,7 @@ DValue *DtoCastDelegate(const Loc &loc, DValue *val, Type *to) {
   fatal();
 }
 
-DValue *DtoCastVector(const Loc &loc, DValue *val, Type *to) {
+DValue *DtoCastVector(Loc loc, DValue *val, Type *to) {
   assert(val->type->toBasetype()->ty == TY::Tvector);
   Type *totype = to->toBasetype();
   LLType *tolltype = DtoType(to);
@@ -663,7 +663,7 @@ DValue *DtoCastVector(const Loc &loc, DValue *val, Type *to) {
   fatal();
 }
 
-DValue *DtoCastStruct(const Loc &loc, DValue *val, Type *to) {
+DValue *DtoCastStruct(Loc loc, DValue *val, Type *to) {
   Type *const totype = to->toBasetype();
   if (totype->ty == TY::Tstruct) {
     // This a cast to repaint a struct to another type, which the language
@@ -678,7 +678,7 @@ DValue *DtoCastStruct(const Loc &loc, DValue *val, Type *to) {
   fatal();
 }
 
-DValue *DtoCast(const Loc &loc, DValue *val, Type *to) {
+DValue *DtoCast(Loc loc, DValue *val, Type *to) {
   Type *fromtype = val->type->toBasetype();
   Type *totype = to->toBasetype();
 
@@ -712,16 +712,16 @@ DValue *DtoCast(const Loc &loc, DValue *val, Type *to) {
   LOG_SCOPE;
 
   if (fromtype->ty == TY::Tvector) {
-    // First, handle vector types (which can also be isintegral()).
+    // First, handle vector types (which can also be isIntegral()).
     return DtoCastVector(loc, val, to);
   }
-  if (fromtype->isintegral()) {
+  if (fromtype->isIntegral()) {
     return DtoCastInt(loc, val, to);
   }
-  if (fromtype->iscomplex()) {
+  if (fromtype->isComplex()) {
     return DtoCastComplex(loc, val, to);
   }
-  if (fromtype->isfloating()) {
+  if (fromtype->isFloating()) {
     return DtoCastFloat(loc, val, to);
   }
 
@@ -750,7 +750,7 @@ DValue *DtoCast(const Loc &loc, DValue *val, Type *to) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-DValue *DtoPaintType(const Loc &loc, DValue *val, Type *to) {
+DValue *DtoPaintType(Loc loc, DValue *val, Type *to) {
   Type *from = val->type->toBasetype();
   IF_LOG Logger::println("repainting from '%s' to '%s'", from->toChars(),
                          to->toChars());
@@ -975,7 +975,7 @@ DValue *DtoDeclarationExp(Dsymbol *declaration) {
   } else if (AttribDeclaration *a = declaration->isAttribDeclaration()) {
     Logger::println("AttribDeclaration");
     // choose the right set in case this is a conditional declaration
-    if (auto d = a->include(nullptr)) {
+    if (auto d = include(a, nullptr)) {
       for (unsigned i = 0; i < d->length; ++i) {
         DtoDeclarationExp((*d)[i]);
       }
@@ -1067,7 +1067,7 @@ LLValue *DtoRawVarDeclaration(VarDeclaration *var, LLValue *addr) {
  * INITIALIZER HELPERS
  ******************************************************************************/
 
-LLConstant *DtoConstInitializer(const Loc &loc, Type *type, Initializer *init,
+LLConstant *DtoConstInitializer(Loc loc, Type *type, Initializer *init,
                                 const bool isCfile) {
   LLConstant *_init = nullptr; // may return zero
   if (!init) {
@@ -1105,7 +1105,7 @@ LLConstant *DtoConstInitializer(const Loc &loc, Type *type, Initializer *init,
 
 ////////////////////////////////////////////////////////////////////////////////
 
-LLConstant *DtoConstExpInit(const Loc &loc, Type *targetType, Expression *exp) {
+LLConstant *DtoConstExpInit(Loc loc, Type *targetType, Expression *exp) {
   IF_LOG Logger::println("DtoConstExpInit(targetType = %s, exp = %s)",
                          targetType->toChars(), exp->toChars());
   LOG_SCOPE
@@ -1211,7 +1211,7 @@ LLConstant *DtoConstExpInit(const Loc &loc, Type *targetType, Expression *exp) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-LLConstant *DtoTypeInfoOf(const Loc &loc, Type *type) {
+LLConstant *DtoTypeInfoOf(Loc loc, Type *type) {
   IF_LOG Logger::println("DtoTypeInfoOf(type = '%s')", type->toChars());
   LOG_SCOPE
 
@@ -1240,9 +1240,9 @@ static char *DtoOverloadedIntrinsicName(TemplateInstance *ti,
   Type *T = static_cast<Type *>(ti->tdtypes[0]);
 
   char prefix;
-  if (T->isfloating() && !T->iscomplex()) {
+  if (T->isFloating() && !T->isComplex()) {
     prefix = 'f';
-  } else if (T->isintegral()) {
+  } else if (T->isIntegral()) {
     prefix = 'i';
   } else {
     error(ti->loc, "%s `%s` has invalid template parameter for intrinsic: `%s`",
@@ -1320,7 +1320,7 @@ Type *stripModifiers(Type *type, bool transitive) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-LLValue *makeLValue(const Loc &loc, DValue *value) {
+LLValue *makeLValue(Loc loc, DValue *value) {
   if (value->isLVal())
     return DtoLVal(value);
 
@@ -1335,7 +1335,7 @@ LLValue *makeLValue(const Loc &loc, DValue *value) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void callPostblit(const Loc &loc, Expression *exp, LLValue *val) {
+void callPostblit(Loc loc, Expression *exp, LLValue *val) {
   Type *tb = exp->type->toBasetype();
   if ((exp->op == EXP::variable || exp->op == EXP::dotVariable ||
        exp->op == EXP::star || exp->op == EXP::this_ ||
@@ -1365,7 +1365,7 @@ bool isSpecialRefVar(VarDeclaration *vd) {
 ////////////////////////////////////////////////////////////////////////////////
 
 bool isLLVMUnsigned(Type *t) {
-  return t->isunsigned() || t->ty == TY::Tpointer;
+  return t->isUnsigned() || t->ty == TY::Tpointer;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1440,7 +1440,7 @@ LLValue *createIPairCmp(EXP op, LLValue *lhs1, LLValue *lhs2, LLValue *rhs1,
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-DValue *DtoSymbolAddress(const Loc &loc, Type *type, Declaration *decl) {
+DValue *DtoSymbolAddress(Loc loc, Type *type, Declaration *decl) {
   IF_LOG Logger::println("DtoSymbolAddress ('%s' of type '%s')",
                          decl->toChars(), decl->type->toChars());
   LOG_SCOPE
@@ -1490,13 +1490,6 @@ DValue *DtoSymbolAddress(const Loc &loc, Type *type, Declaration *decl) {
       Logger::println("TypeInfoDeclaration");
       LLValue *m = DtoResolveTypeInfo(tid);
       return new DImValue(type, m);
-    }
-    // special vtbl symbol, used by LDC as alias to the actual vtbl (with
-    // different type and mangled name)
-    if (vd->isClassMember() && vd == vd->isClassMember()->vtblsym) {
-      Logger::println("vtbl symbol");
-      auto cd = vd->isClassMember();
-      return new DLValue(type, getIrAggr(cd)->getVtblSymbol());
     }
     // nested variable
     if (vd->nestedrefs.length) {
@@ -1591,7 +1584,7 @@ DValue *DtoSymbolAddress(const Loc &loc, Type *type, Declaration *decl) {
   llvm_unreachable("Unimplemented VarExp type");
 }
 
-llvm::Constant *DtoConstSymbolAddress(const Loc &loc, Declaration *decl) {
+llvm::Constant *DtoConstSymbolAddress(Loc loc, Declaration *decl) {
   // global variable
   if (VarDeclaration *vd = decl->isVarDeclaration()) {
     if (!vd->isDataseg()) {
@@ -1716,7 +1709,7 @@ bool dllimportDataSymbol(Dsymbol *sym) {
   return false;
 }
 
-llvm::GlobalVariable *declareGlobal(const Loc &loc, llvm::Module &module,
+llvm::GlobalVariable *declareGlobal(Loc loc, llvm::Module &module,
                                     llvm::Type *type,
                                     llvm::StringRef mangledName,
                                     bool isConstant, bool isThreadLocal,
@@ -1781,7 +1774,7 @@ void defineGlobal(llvm::GlobalVariable *global, llvm::Constant *init,
     setLinkageAndVisibility(symbolForLinkageAndVisibility, global);
 }
 
-llvm::GlobalVariable *defineGlobal(const Loc &loc, llvm::Module &module,
+llvm::GlobalVariable *defineGlobal(Loc loc, llvm::Module &module,
                                    llvm::StringRef mangledName,
                                    llvm::Constant *init,
                                    llvm::GlobalValue::LinkageTypes linkage,
@@ -1807,7 +1800,7 @@ FuncDeclaration *getParentFunc(Dsymbol *sym) {
     if (auto fld = fd->isFuncLiteralDeclaration()) {
       if (fld->tok == TOK::function_)
         return nullptr;
-    } else if (fd->isStatic() || (!fd->isThis() && fd->_linkage != LINK::d)) {
+    } else if (fd->isStatic() || (!fd->isThis() && fd->_linkage() != LINK::d)) {
       return nullptr;
     }
   }

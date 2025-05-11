@@ -635,7 +635,7 @@ bool DtoLowerMagicIntrinsic(IRState *p, FuncDeclaration *fndecl, CallExp *e,
 class ImplicitArgumentsBuilder {
 public:
   ImplicitArgumentsBuilder(std::vector<LLValue *> &args, AttrSet &attrs,
-                           const Loc &loc, DValue *fnval,
+                           Loc loc, DValue *fnval,
                            LLFunctionType *llCalleeType, Expressions *argexps,
                            Type *resulttype, LLValue *sretPointer)
       : args(args), attrs(attrs), loc(loc), fnval(fnval), argexps(argexps),
@@ -664,7 +664,7 @@ private:
   // passed:
   std::vector<LLValue *> &args;
   AttrSet &attrs;
-  const Loc &loc;
+  const Loc loc;
   DValue *const fnval;
   Expressions *const argexps;
   Type *const resulttype;
@@ -838,7 +838,7 @@ static LLValue *DtoCallableValue(DValue *fn) {
 }
 
 // FIXME: this function is a mess !
-DValue *DtoCallFunction(const Loc &loc, Type *resulttype, DValue *fnval,
+DValue *DtoCallFunction(Loc loc, Type *resulttype, DValue *fnval,
                         Expressions *arguments, LLValue *sretPointer, bool directcall) {
   IF_LOG Logger::println("DtoCallFunction()");
   LOG_SCOPE
@@ -916,7 +916,7 @@ DValue *DtoCallFunction(const Loc &loc, Type *resulttype, DValue *fnval,
 
   // call the function
   llvm::CallBase *call = gIR->funcGen().callOrInvoke(callable, callableTy, args,
-                                                     "", tf->isnothrow());
+                                                     "", tf->isNothrow());
 
   // PGO: Insert instrumentation or attach profile metadata at indirect call
   // sites.
@@ -932,7 +932,7 @@ DValue *DtoCallFunction(const Loc &loc, Type *resulttype, DValue *fnval,
   LLValue *retllval = irFty.arg_sret ? args[sretArgIndex]
                                      : static_cast<llvm::Instruction *>(call);
   bool retValIsLVal =
-      (tf->isref() && returnTy != TY::Tvoid) || (irFty.arg_sret != nullptr);
+      (tf->isRef() && returnTy != TY::Tvoid) || (irFty.arg_sret != nullptr);
 
   if (!retValIsLVal) {
     // let the ABI transform the return value back
@@ -952,7 +952,7 @@ DValue *DtoCallFunction(const Loc &loc, Type *resulttype, DValue *fnval,
                            returntype->toChars(), rbase->toChars());
     switch (rbase->ty) {
     case TY::Tarray:
-      if (tf->isref()) {
+      if (tf->isRef()) {
         retllval = DtoBitCast(retllval, DtoType(pointerTo(rbase)));
       } else {
         retllval = DtoSlicePaint(retllval, DtoType(rbase));
@@ -960,7 +960,7 @@ DValue *DtoCallFunction(const Loc &loc, Type *resulttype, DValue *fnval,
       break;
 
     case TY::Tsarray:
-      if (nextbase->ty == TY::Tvector && !tf->isref()) {
+      if (nextbase->ty == TY::Tvector && !tf->isRef()) {
         if (!retValIsLVal) {
           // static arrays need to be dumped to memory; use vector alignment
           retllval =
@@ -975,7 +975,7 @@ DValue *DtoCallFunction(const Loc &loc, Type *resulttype, DValue *fnval,
     case TY::Tclass:
     case TY::Taarray:
     case TY::Tpointer:
-      if (tf->isref()) {
+      if (tf->isRef()) {
         retllval = DtoBitCast(retllval, DtoType(pointerTo(rbase)));
       } else {
         retllval = DtoBitCast(retllval, DtoType(rbase));
@@ -983,7 +983,7 @@ DValue *DtoCallFunction(const Loc &loc, Type *resulttype, DValue *fnval,
       break;
 
     case TY::Tstruct:
-      if (nextbase->ty == TY::Taarray && !tf->isref()) {
+      if (nextbase->ty == TY::Taarray && !tf->isRef()) {
         // In the D2 frontend, the associative array type and its
         // object.AssociativeArray representation are used
         // interchangably in some places. However, AAs are returned

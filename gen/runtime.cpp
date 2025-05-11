@@ -59,7 +59,7 @@ static void buildRuntimeModule();
 
 ////////////////////////////////////////////////////////////////////////////////
 
-static void checkForImplicitGCCall(const Loc &loc, const char *name) {
+static void checkForImplicitGCCall(Loc loc, const char *name) {
   if (nogc) {
     static const std::string GCNAMES[] = {
         "_aaDelX",
@@ -139,7 +139,7 @@ private:
 public:
   LazyType(Declaration *&decl, const char *name) : declRef(decl), name(name) {}
 
-  Type *get(const Loc &loc = {}) {
+  Type *get(Loc loc = {}) {
     if (!type) {
       if (!declRef || !declRef->type) {
         const char *kind = getKind();
@@ -212,7 +212,7 @@ public:
     return copy;
   }
 
-  Type *get(const Loc &loc) const {
+  Type *get(Loc loc) const {
     Type *ty;
     if (kind == Kind::lazyClass) {
       ty = static_cast<LazyClassType *>(ptr)->get(loc);
@@ -242,7 +242,7 @@ struct LazyFunctionDeclarer {
   std::vector<StorageClass> paramsSTC;
   AttrSet attributes;
 
-  void declare(const Loc &loc) {
+  void declare(Loc loc) {
     Parameters *params = nullptr;
     if (!paramTypes.empty()) {
       params = createParameters();
@@ -269,14 +269,8 @@ struct LazyFunctionDeclarer {
 
       fn->setAttributes(attrs);
 
-      // On x86_64, always set 'uwtable' for System V ABI compatibility.
-      // FIXME: Move to better place (abi-x86-64.cpp?)
-      // NOTE: There are several occurances if this line.
-      if (global.params.targetTriple->getArch() == llvm::Triple::x86_64) {
-        fn->setUWTableKind(llvm::UWTableKind::Default);
-      }
-
       fn->setCallingConv(gABI->callingConv(dty, false));
+      gABI->setUnwindTableKind(fn);
     }
   }
 };
@@ -308,7 +302,7 @@ void createFwdDecl(LINK linkage, PotentiallyLazyType returnType,
 
 ////////////////////////////////////////////////////////////////////////////////
 
-llvm::Function *getRuntimeFunction(const Loc &loc, llvm::Module &target,
+llvm::Function *getRuntimeFunction(Loc loc, llvm::Module &target,
                                    const char *name) {
   checkForImplicitGCCall(loc, name);
 
@@ -397,7 +391,7 @@ static std::vector<PotentiallyLazyType> getCAssertFunctionParamTypes() {
   return {voidPtr, voidPtr, uint};
 }
 
-llvm::Function *getCAssertFunction(const Loc &loc, llvm::Module &target) {
+llvm::Function *getCAssertFunction(Loc loc, llvm::Module &target) {
   return getRuntimeFunction(loc, target, getCAssertFunctionName());
 }
 
@@ -415,7 +409,7 @@ static const char *getUnwindResumeFunctionName() {
   return "_Unwind_Resume";
 }
 
-llvm::Function *getUnwindResumeFunction(const Loc &loc, llvm::Module &target) {
+llvm::Function *getUnwindResumeFunction(Loc loc, llvm::Module &target) {
   return getRuntimeFunction(loc, target, getUnwindResumeFunctionName());
 }
 
@@ -609,10 +603,6 @@ static void buildRuntimeModule() {
   createFwdDecl(LINK::c, objectTy, {"_d_newclass", "_d_allocclass"},
                 {classInfoTy}, {STCconst});
 
-  // Throwable _d_newThrowable(const ClassInfo ci)
-  createFwdDecl(LINK::c, throwableTy, {"_d_newThrowable"}, {classInfoTy},
-                {STCconst});
-
   // void _d_delarray_t(void[]* p, const TypeInfo_Struct ti)
   createFwdDecl(LINK::c, voidTy, {"_d_delarray_t"},
                 {voidArrayPtrTy, structTypeInfoTy}, {0, STCconst});
@@ -801,10 +791,10 @@ static void buildRuntimeModule() {
   //////////////////////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////
 
-  // void invariant._d_invariant(Object o)
+  // void rt.invariant_._d_invariant(Object o)
   {
-    static const std::string mangle =
-        getIRMangledFuncName("_D9invariant12_d_invariantFC6ObjectZv", LINK::d);
+    static const std::string mangle = getIRMangledFuncName(
+        "_D2rt10invariant_12_d_invariantFC6ObjectZv", LINK::d);
     createFwdDecl(LINK::d, voidTy, {mangle}, {objectTy});
   }
 

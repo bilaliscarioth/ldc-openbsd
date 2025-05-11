@@ -1,13 +1,33 @@
 # LDC master
 
 #### Big news
-- LLVM for prebuilt packages bumped to v19.1.7. (#4822)
-- Revived dynamic-compile (JIT) functionality (formerly unsupported since LLVM 12), supporting LLVM 18+ now. (#4774)
-- ldc2.conf: `%%ldcversion%%` placeholder added, allowing to refer to version-specific directories.
+- Frontend, druntime and Phobos are at version [2.111.0+](https://dlang.org/changelog/2.111.0.html). (#4877, #4910, #4918)
+- Keep frame pointers by default with `-O` for some targets, notably AArch64 (except Windows), x86_64 (except Windows and glibc Linux), Windows x86, and Android. This fixes druntime backtraces with optimized code (incl. prebuilt druntime/Phobos). (#4889)
+- The prebuilt (non-musl) Linux packages are now generated on Ubuntu 22.04; the minimum glibc version has accordingly been raised from v2.31 to v2.35. (#4893)
+- ldc2.conf: Arrays can now be appended to via the `~=` operator. (#4848, #4856)
+- New `--installWithSuffix` command-line option for the `ldc-build-runtime` tool, to simplify copying the libraries to an existing LDC installation. (#4870)
 
 #### Platform support
 
 #### Bug fixes
+
+# LDC 1.40.1 (2025-03-20)
+
+#### Big news
+- Frontend and druntime bumped to version [2.110.0](https://dlang.org/changelog/2.110.0.html) final. (#4854, #4868)
+- LLVM for prebuilt packages bumped to v19.1.7. (#4822)
+- New prebuilt package for Alpine Linux x86_64 with musl libc. It's currently generated on Alpine v3.21, using its default LLVM 19. Most bundled executables are fully static and can be run on ~all distros. (#4826, #4862)
+- Revived dynamic-compile (JIT) functionality (formerly unsupported since LLVM 12), supporting LLVM 18+ now. (#4774)
+- ldc2.conf: `%%ldcversion%%` placeholder added, allowing to refer to version-specific directories.
+- Windows: The prebuilt packages now bundle an official libcurl build (from https://curl.se/windows/), currently v8.12.1. The static library (`curl_a.lib`) isn't available anymore. When bundling this `libcurl.dll` with your binaries, make sure to include `curl-ca-bundle.crt` too (in the same directory as the DLL), to prevent 'SSL peer certificate or SSH remote key was not OK' exceptions. (#4855, #4875)
+
+#### Platform support
+- Supports LLVM 15 - 19.
+- Initial compiler and runtime support for ppc64 and ppc64le systems that use IEEE 754R 128-bit floating-point as the default 128-bit floating-point format. (#4833, #4840)
+- Initial support for Windows on ARM64. The prebuilt Windows multilib package/installer bundles prebuilt arm64 druntime and Phobos; cross-compiling works out of the box via `-mtriple=aarch64-windows-msvc`, but you currently need to set up a suited MSVC arm64 build environment before yourself (e.g., by running `vsdevcmd.bat -arch=arm64 -host_arch=x64`). (#4835, #4846)
+
+#### Bug fixes
+- Prebuilt macOS universal package: Fix automatic bundled `libLTO.dylib` usage when linking with LTO. (#4857)
 - Building multi-file D applications with control-flow protection will no longer cause LDC to throw an internal compiler error. (#4828)
 
 # LDC 1.40.0 (2024-12-15)
